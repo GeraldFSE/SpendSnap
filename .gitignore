@@ -1,0 +1,22 @@
+# Xcode
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Swift Package Manager
+.build/
+Package.resolved
+
+# Firebase and secrets
+GoogleService-Info.plist
+.env
+.env.*
+service-account*.json
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
