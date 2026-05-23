@@ -5,7 +5,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "occurredAt",
+          "fieldPath": "date",
           "order": "DESCENDING"
         },
         {

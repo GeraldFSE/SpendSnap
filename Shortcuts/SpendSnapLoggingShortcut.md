@@ -1,8 +1,14 @@
 # SpendSnap Back Tap and Shortcut Plan
 
-Back Tap can run an iOS Shortcut. The first SpendSnap Shortcut should collect an amount or receive shared text, then open the app with a URL payload.
+Back Tap can run an iOS Shortcut. The simplest SpendSnap Shortcut opens the manual logging form directly.
 
-## Proposed URL Shape
+## Manual Logging URL
+
+```text
+spendsnap://log
+```
+
+## Optional Parsed Text URL
 
 ```text
 spendsnap://log?source=shortcut&rawText=<url-encoded-bank-sms-or-note>
@@ -10,7 +16,7 @@ spendsnap://log?source=shortcut&rawText=<url-encoded-bank-sms-or-note>
 
 ## Shortcut TODOs
 
-- TODO: Create a Shortcut named `SpendSnap Log Expense` that can be assigned to Back Tap in iOS Settings.
-- TODO: Decide whether the Shortcut asks for amount/merchant manually, reads clipboard text, or accepts shared SMS text.
-- TODO: Add a URL scheme or App Intent in the iOS app so the Shortcut can hand off raw expense text.
+- TODO: Create a Shortcut named `SpendSnap Log Expense` with the Open URL action set to `spendsnap://log`.
+- TODO: Assign the Shortcut to Back Tap in iOS Settings.
+- TODO: Decide later whether the Shortcut should ask for amount manually, read clipboard text, or accept shared SMS text.
 - TODO: Document user setup steps with screenshots once the Shortcut exists.

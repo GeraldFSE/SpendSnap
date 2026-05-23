@@ -1,3 +1,4 @@
+import FirebaseCore
 import SwiftUI
 
 @main
@@ -5,9 +6,8 @@ struct SpendSnapApp: App {
     @StateObject private var appState = AppState.makeDefault()
 
     init() {
-        // TODO: Configure Firebase once the iOS project includes FirebaseCore.
-        // Description: Add `FirebaseApp.configure()` here after adding the real
-        // GoogleService-Info.plist to the Xcode target.
+        // Firebase reads GoogleService-Info.plist from the app target at launch.
+        FirebaseApp.configure()
     }
 
     var body: some Scene {
@@ -16,6 +16,12 @@ struct SpendSnapApp: App {
                 .environmentObject(appState)
                 .onOpenURL { url in
                     appState.handleIncomingURL(url)
+                }
+                .sheet(isPresented: $appState.isShowingExpenseLogger) {
+                    NavigationStack {
+                        ExpenseLoggingView()
+                    }
+                    .environmentObject(appState)
                 }
         }
     }

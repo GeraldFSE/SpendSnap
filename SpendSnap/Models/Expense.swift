@@ -9,6 +9,7 @@ struct Expense: Identifiable, Codable, Equatable {
     var occurredAt: Date
     var source: ExpenseSource
     var rawText: String?
+    var notes: String
     var createdAt: Date
 
     init(
@@ -20,6 +21,7 @@ struct Expense: Identifiable, Codable, Equatable {
         occurredAt: Date,
         source: ExpenseSource,
         rawText: String? = nil,
+        notes: String = "",
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -30,6 +32,7 @@ struct Expense: Identifiable, Codable, Equatable {
         self.occurredAt = occurredAt
         self.source = source
         self.rawText = rawText
+        self.notes = notes
         self.createdAt = createdAt
     }
 
@@ -46,10 +49,11 @@ struct Expense: Identifiable, Codable, Equatable {
             amountMinor: amountMinor,
             currencyCode: parsedExpense.currencyCode,
             merchant: merchant,
-            category: parsedExpense.category ?? .uncategorized,
+            category: parsedExpense.category ?? .others,
             occurredAt: parsedExpense.occurredAt ?? Date(),
             source: parsedExpense.source,
-            rawText: parsedExpense.rawText
+            rawText: parsedExpense.rawText,
+            notes: parsedExpense.parserNotes ?? ""
         )
     }
 }
@@ -57,13 +61,33 @@ struct Expense: Identifiable, Codable, Equatable {
 enum ExpenseCategory: String, CaseIterable, Codable, Identifiable {
     case food
     case transport
-    case groceries
     case shopping
     case bills
-    case entertainment
-    case uncategorized
+    case others
 
     var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .food:
+            return "Food"
+        case .transport:
+            return "Transport"
+        case .shopping:
+            return "Shopping"
+        case .bills:
+            return "Bills"
+        case .others:
+            return "Others"
+        }
+    }
+
+    init(firestoreValue: String) {
+        let normalized = firestoreValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        self = ExpenseCategory.allCases.first {
+            $0.rawValue == normalized || $0.displayName.lowercased() == normalized
+        } ?? .others
+    }
 }
 
 enum ExpenseSource: String, Codable {

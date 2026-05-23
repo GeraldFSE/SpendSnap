@@ -25,8 +25,8 @@ struct DashboardView: View {
                         ForEach(appState.expenses) { expense in
                             HStack {
                                 VStack(alignment: .leading) {
-                                    Text(expense.merchant)
-                                    Text(expense.category.rawValue.capitalized)
+                                    Text(expense.category.displayName)
+                                    Text(expense.occurredAt.formatted(date: .abbreviated, time: .shortened))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -46,6 +46,12 @@ struct DashboardView: View {
                     ExpenseLoggingView()
                 } label: {
                     Image(systemName: "plus")
+                }
+
+                NavigationLink {
+                    ExpenseHistoryView()
+                } label: {
+                    Image(systemName: "clock")
                 }
 
                 NavigationLink {

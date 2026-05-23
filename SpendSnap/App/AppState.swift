@@ -7,6 +7,7 @@ final class AppState: ObservableObject {
     @Published var activeBudget: Budget = .defaultDailyBudget
     @Published var latestParse: ParsedExpense?
     @Published var lastErrorMessage: String?
+    @Published var isShowingExpenseLogger = false
 
     let parser: ExpenseParsingClient
     let repository: ExpenseRepository
@@ -28,7 +29,7 @@ final class AppState: ObservableObject {
     static func makeDefault() -> AppState {
         AppState(
             parser: RuleBasedSMSExpenseParser(),
-            repository: InMemoryExpenseRepository(),
+            repository: FirestoreExpenseRepository(),
             budgetCalculator: BudgetCalculator(),
             shortcutPayloadHandler: ShortcutPayloadHandler()
         )
@@ -45,12 +46,20 @@ final class AppState: ObservableObject {
     }
 
     func handleIncomingURL(_ url: URL) {
-        do {
-            let payload = try shortcutPayloadHandler.payload(from: url)
+        guard url.scheme == "spendsnap" else {
+            return
+        }
+
+        // Back Tap Shortcuts can open spendsnap://log to jump straight to manual logging.
+        if url.host == "log" || url.path == "/log" {
+            isShowingExpenseLogger = true
+        }
+
+        if let payload = try? shortcutPayloadHandler.payload(from: url) {
             Task {
                 await parseRawExpenseText(payload.rawText, source: .shortcut)
             }
-        } catch {
+        } else if url.host != "log" && url.path != "/log" {
             lastErrorMessage = "SpendSnap could not read the Shortcut payload."
         }
     }
@@ -68,18 +77,26 @@ final class AppState: ObservableObject {
         }
     }
 
+    func saveExpense(_ expense: Expense) async -> Bool {
+        do {
+            try await repository.saveExpense(expense)
+            expenses.removeAll { $0.id == expense.id }
+            expenses.insert(expense, at: 0)
+            return true
+        } catch {
+            lastErrorMessage = "Unable to save this expense."
+            return false
+        }
+    }
+
     func saveParsedExpense(_ parsedExpense: ParsedExpense) async {
         guard let expense = Expense(parsedExpense: parsedExpense) else {
             lastErrorMessage = "Please fill in the missing expense details."
             return
         }
 
-        do {
-            try await repository.saveExpense(expense)
-            expenses.insert(expense, at: 0)
+        if await saveExpense(expense) {
             latestParse = nil
-        } catch {
-            lastErrorMessage = "Unable to save this expense."
         }
     }
 }

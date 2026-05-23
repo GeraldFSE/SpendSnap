@@ -15,7 +15,7 @@ final class RuleBasedSMSExpenseParser: ExpenseParsingClient {
             currencyCode: Self.extractCurrencyCode(from: trimmed) ?? "SGD",
             merchant: merchant,
             occurredAt: Date(),
-            category: .uncategorized,
+            category: .others,
             confidence: amountMinor == nil ? 0.25 : 0.55,
             rawText: rawText,
             source: .sms,

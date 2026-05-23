@@ -4,7 +4,7 @@ SpendSnap is an iOS budgeting app concept from NUS Orbital 2026. The app aims to
 
 ## Current Backbone
 
-This repository currently contains a starter structure, not a finished Xcode project. The folders are organized so the team can create an Xcode SwiftUI app and add these files to the relevant app and test targets.
+This repository currently contains the SwiftUI app source structure, not a checked-in `.xcodeproj`. Create an iOS SwiftUI app target named `SpendSnap`, add the `SpendSnap` folder to the app target, and use `SpendSnap/App/Info.plist` as the target plist so `spendsnap://log` opens the logging form from iOS Shortcuts.
 
 - `SpendSnap/App`: App entry point and shared state.
 - `SpendSnap/Models`: Core budget, expense, parsing, and summary data structures.
@@ -19,7 +19,17 @@ This repository currently contains a starter structure, not a finished Xcode pro
 ## Setup TODOs
 
 - TODO: Create the Xcode SwiftUI iOS app target and add the `SpendSnap` folder to it.
-- TODO: Add Firebase iOS SDK packages for Auth and Firestore once the Firebase project is created.
+- TODO: Add the Firebase iOS SDK Swift packages for `FirebaseCore` and `FirebaseFirestore`.
+- TODO: Add the real `GoogleService-Info.plist` to the Xcode app target.
 - TODO: Add ActivityKit only if the team commits to the Dynamic Island/live activity feature for supported devices.
 - TODO: Add OpenAI API access through a secure backend or Firebase Cloud Function rather than storing secrets in the app.
-- TODO: Build the iOS Shortcut that accepts pasted/shared bank SMS text and opens SpendSnap with a URL payload.
+- TODO: Build the iOS Shortcut assigned to Back Tap with the Open URL action set to `spendsnap://log`.
+
+## MVP Firestore Shape
+
+Manual entries are saved to the top-level `expenses` collection with these fields:
+
+- `amount`: `Double`
+- `category`: `String`
+- `notes`: `String`
+- `date`: Firestore `Timestamp`

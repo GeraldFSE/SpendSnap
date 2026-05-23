@@ -2,10 +2,14 @@ import SwiftUI
 
 struct ExpenseLoggingView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
     @State private var amountText = ""
-    @State private var merchant = ""
-    @State private var selectedCategory: ExpenseCategory = .uncategorized
+    @State private var selectedCategory: ExpenseCategory = .food
+    @State private var notes = ""
     @State private var isShowingSMSPaste = false
+    @State private var isSaving = false
+    @State private var didSave = false
 
     var body: some View {
         Form {
@@ -13,12 +17,20 @@ struct ExpenseLoggingView: View {
                 TextField("Amount", text: $amountText)
                     .keyboardType(.decimalPad)
 
-                TextField("Merchant", text: $merchant)
-
                 Picker("Category", selection: $selectedCategory) {
                     ForEach(ExpenseCategory.allCases) { category in
-                        Text(category.rawValue.capitalized).tag(category)
+                        Text(category.displayName).tag(category)
                     }
+                }
+
+                TextField("Notes (optional)", text: $notes, axis: .vertical)
+                    .lineLimit(2...4)
+            }
+
+            if didSave {
+                Section {
+                    Label("Expense saved", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
                 }
             }
 
@@ -27,9 +39,10 @@ struct ExpenseLoggingView: View {
                     isShowingSMSPaste = true
                 }
 
-                Button("Save expense") {
+                Button(isSaving ? "Saving..." : "Submit") {
                     Task { await saveManualExpense() }
                 }
+                .disabled(isSaving || amountText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
             if let parsed = appState.latestParse {
@@ -58,19 +71,32 @@ struct ExpenseLoggingView: View {
             return
         }
 
-        let parsed = ParsedExpense(
+        isSaving = true
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let expense = Expense(
             amountMinor: Int((amount * 100).rounded()),
             currencyCode: appState.activeBudget.currencyCode,
-            merchant: merchant,
-            occurredAt: Date(),
+            merchant: selectedCategory.displayName,
             category: selectedCategory,
-            confidence: 1,
-            rawText: "",
+            occurredAt: Date(),
             source: .manual,
-            parserNotes: "Manual entry"
+            notes: trimmedNotes
         )
 
-        await appState.saveParsedExpense(parsed)
+        if await appState.saveExpense(expense) {
+            resetForm()
+            didSave = true
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            dismiss()
+        }
+
+        isSaving = false
+    }
+
+    private func resetForm() {
+        amountText = ""
+        selectedCategory = .food
+        notes = ""
     }
 }
 
