@@ -42,7 +42,7 @@ export function subscribeToExpenses(onExpenses, onError) {
     (snapshot) => {
       const expenses = snapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data({ serverTimestamps: "estimate" })
       }));
 
       onExpenses(expenses);

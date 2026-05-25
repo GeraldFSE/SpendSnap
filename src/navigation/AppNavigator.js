@@ -5,6 +5,7 @@ import { NavigationContainer, useNavigationContainerRef } from "@react-navigatio
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import HomeScreen from "../screens/HomeScreen";
 import AddExpenseScreen from "../screens/AddExpenseScreen";
+import SpendingSummaryScreen from "../screens/SpendingSummaryScreen";
 
 const Tab = createBottomTabNavigator();
 const LOG_EXPENSE_ACTION_ID = "log-expense";
@@ -91,6 +92,7 @@ export default function AppNavigator() {
       >
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Add Expense" component={AddExpenseScreen} />
+        <Tab.Screen name="Summary" component={SpendingSummaryScreen} />
       </Tab.Navigator>
     </NavigationContainer>
   );
