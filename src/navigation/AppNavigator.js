@@ -1,0 +1,97 @@
+import React, { useCallback, useEffect, useRef } from "react";
+import { StatusBar } from "expo-status-bar";
+import * as QuickActions from "expo-quick-actions";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import HomeScreen from "../screens/HomeScreen";
+import AddExpenseScreen from "../screens/AddExpenseScreen";
+
+const Tab = createBottomTabNavigator();
+const LOG_EXPENSE_ACTION_ID = "log-expense";
+
+export default function AppNavigator() {
+  const navigationRef = useNavigationContainerRef();
+  const pendingQuickActionRef = useRef(QuickActions.initial ?? null);
+
+  const openAddExpenseScreen = useCallback(() => {
+    if (navigationRef.isReady()) {
+      navigationRef.navigate("Add Expense");
+      return;
+    }
+
+    pendingQuickActionRef.current = { id: LOG_EXPENSE_ACTION_ID };
+  }, [navigationRef]);
+
+  const handleQuickAction = useCallback(
+    (action) => {
+      if (action?.id === LOG_EXPENSE_ACTION_ID || action?.params?.screen === "AddExpense") {
+        openAddExpenseScreen();
+      }
+    },
+    [openAddExpenseScreen]
+  );
+
+  useEffect(() => {
+    let subscription;
+
+    async function configureQuickActions() {
+      try {
+        // Home Screen Quick Actions require a development/EAS build; guards keep Expo Go safe.
+        if (typeof QuickActions.isSupportedAsync === "function") {
+          const supported = await QuickActions.isSupportedAsync();
+          if (!supported) {
+            return;
+          }
+        }
+
+        if (typeof QuickActions.setItems === "function") {
+          await QuickActions.setItems([
+            {
+              id: LOG_EXPENSE_ACTION_ID,
+              title: "Log Expense",
+              subtitle: "Add a SpendSnap entry",
+              params: { screen: "AddExpense" }
+            }
+          ]);
+        }
+
+        if (typeof QuickActions.addListener === "function") {
+          subscription = QuickActions.addListener(handleQuickAction);
+        }
+      } catch (error) {
+        console.warn("Quick Actions are unavailable in this runtime.", error);
+      }
+    }
+
+    configureQuickActions();
+
+    return () => {
+      subscription?.remove?.();
+    };
+  }, [handleQuickAction]);
+
+  return (
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => {
+        if (pendingQuickActionRef.current) {
+          handleQuickAction(pendingQuickActionRef.current);
+          pendingQuickActionRef.current = null;
+        }
+      }}
+    >
+      <StatusBar style="auto" />
+      <Tab.Navigator
+        screenOptions={{
+          headerStyle: { backgroundColor: "#FFFFFF" },
+          headerTitleStyle: { fontWeight: "700" },
+          tabBarActiveTintColor: "#2563EB",
+          tabBarInactiveTintColor: "#64748B"
+        }}
+      >
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Add Expense" component={AddExpenseScreen} />
+      </Tab.Navigator>
+    </NavigationContainer>
+  );
+}
