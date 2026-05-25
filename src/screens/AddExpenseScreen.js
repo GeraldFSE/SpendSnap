@@ -2,15 +2,17 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { saveExpense } from "../services/firebase";
 
 const CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Others"];
@@ -21,6 +23,7 @@ export default function AddExpenseScreen() {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   async function handleSubmit() {
     const parsedAmount = Number(amount);
@@ -54,57 +57,98 @@ export default function AddExpenseScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.select({ ios: "padding", android: undefined })}
-    >
-      <View style={styles.form}>
-        <Text style={styles.label}>Amount</Text>
-        <TextInput
-          value={amount}
-          onChangeText={setAmount}
-          placeholder="0.00"
-          keyboardType="decimal-pad"
-          style={styles.input}
-        />
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.select({ ios: "padding", android: undefined })}
+      >
+        <View style={styles.form}>
+          <Text style={styles.label}>Amount</Text>
+          <TextInput
+            value={amount}
+            onChangeText={setAmount}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
 
-        <Text style={styles.label}>Category</Text>
-        <View style={styles.pickerWrap}>
-          <Picker selectedValue={category} onValueChange={setCategory}>
-            {CATEGORIES.map((item) => (
-              <Picker.Item key={item} label={item} value={item} />
-            ))}
-          </Picker>
+          <Text style={styles.label}>Category</Text>
+          <Pressable
+            onPress={() => {
+              Keyboard.dismiss();
+              setCategoryModalVisible(true);
+            }}
+            style={({ pressed }) => [styles.categoryField, pressed ? styles.categoryFieldPressed : null]}
+          >
+            <Text style={styles.categoryText}>{category}</Text>
+            <Text style={styles.categoryChevron}>Change</Text>
+          </Pressable>
+
+          <Text style={styles.label}>Notes</Text>
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Optional"
+            multiline
+            style={[styles.input, styles.notesInput]}
+          />
+
+          {confirmation ? <Text style={styles.confirmation}>{confirmation}</Text> : null}
+
+          <Pressable
+            onPress={handleSubmit}
+            disabled={saving}
+            style={({ pressed }) => [
+              styles.submitButton,
+              pressed && !saving ? styles.submitButtonPressed : null,
+              saving ? styles.submitButtonDisabled : null
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitText}>Submit</Text>
+            )}
+          </Pressable>
         </View>
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Optional"
-          multiline
-          style={[styles.input, styles.notesInput]}
-        />
-
-        {confirmation ? <Text style={styles.confirmation}>{confirmation}</Text> : null}
-
-        <Pressable
-          onPress={handleSubmit}
-          disabled={saving}
-          style={({ pressed }) => [
-            styles.submitButton,
-            pressed && !saving ? styles.submitButtonPressed : null,
-            saving ? styles.submitButtonDisabled : null
-          ]}
+        <Modal
+          animationType="fade"
+          transparent
+          visible={categoryModalVisible}
+          onRequestClose={() => setCategoryModalVisible(false)}
         >
-          {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.submitText}>Submit</Text>
-          )}
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+          <Pressable style={styles.modalBackdrop} onPress={() => setCategoryModalVisible(false)}>
+            <Pressable style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Choose category</Text>
+              {CATEGORIES.map((item) => (
+                <Pressable
+                  key={item}
+                  onPress={() => {
+                    setCategory(item);
+                    setCategoryModalVisible(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.categoryOption,
+                    item === category ? styles.categoryOptionSelected : null,
+                    pressed ? styles.categoryOptionPressed : null
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.categoryOptionText,
+                      item === category ? styles.categoryOptionTextSelected : null
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                </Pressable>
+              ))}
+            </Pressable>
+          </Pressable>
+        </Modal>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -133,12 +177,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12
   },
-  pickerWrap: {
+  categoryField: {
+    alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderColor: "#CBD5E1",
     borderRadius: 8,
     borderWidth: 1,
-    overflow: "hidden"
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 14
+  },
+  categoryFieldPressed: {
+    backgroundColor: "#EFF6FF"
+  },
+  categoryText: {
+    color: "#0F172A",
+    fontSize: 16,
+    fontWeight: "600"
+  },
+  categoryChevron: {
+    color: "#2563EB",
+    fontSize: 14,
+    fontWeight: "700"
   },
   notesInput: {
     minHeight: 96,
@@ -167,5 +228,42 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700"
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    justifyContent: "flex-end",
+    padding: 16
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    padding: 12
+  },
+  modalTitle: {
+    color: "#0F172A",
+    fontSize: 18,
+    fontWeight: "800",
+    paddingHorizontal: 4,
+    paddingVertical: 10
+  },
+  categoryOption: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 14
+  },
+  categoryOptionPressed: {
+    backgroundColor: "#F1F5F9"
+  },
+  categoryOptionSelected: {
+    backgroundColor: "#DBEAFE"
+  },
+  categoryOptionText: {
+    color: "#0F172A",
+    fontSize: 16,
+    fontWeight: "600"
+  },
+  categoryOptionTextSelected: {
+    color: "#1D4ED8"
   }
 });
