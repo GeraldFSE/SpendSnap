@@ -38,8 +38,8 @@ export default function AppNavigator() {
     async function configureQuickActions() {
       try {
         // Home Screen Quick Actions require a development/EAS build; guards keep Expo Go safe.
-        if (typeof QuickActions.isSupportedAsync === "function") {
-          const supported = await QuickActions.isSupportedAsync();
+        if (typeof QuickActions.isSupported === "function") {
+          const supported = await QuickActions.isSupported();
           if (!supported) {
             return;
           }

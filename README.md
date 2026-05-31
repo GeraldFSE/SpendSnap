@@ -82,6 +82,52 @@ Home Screen Quick Actions are wired with `expo-quick-actions`, but they require 
 
 If Expo hangs while starting, check your Node version. Expo SDK 54 works best on a Node LTS version such as Node 20 or 22.
 
+## Milestone 1 POC Access
+
+The Milestone 1 POC can be tested from this repository branch using Expo Go for the main app flow.
+
+```bash
+git clone https://github.com/GeraldFSE/SpendSnap.git
+cd SpendSnap
+git checkout feature/expense-logging
+npm install
+```
+
+Create a `.env` file in the project root using the demo config below, then start the project:
+
+```bash
+npx expo start
+```
+
+Scan the QR code with Expo Go. Evaluators can test:
+
+- Manual expense logging through the Add Expense tab.
+- Category selection through the modal picker.
+- Optional notes entry.
+- Expense saving to the shared demo Firestore project.
+- Real-time expense history on the Home tab.
+- Spending summaries on the Summary tab.
+
+Quick Actions are implemented in code using `expo-quick-actions`, but native app icon shortcuts require an EAS/development build. In Expo Go, evaluators should use the Add Expense tab to access the same expense logging flow.
+
+## Milestone 1 Demo Firebase Config
+
+This Firebase config is provided for Milestone 1 evaluator convenience only. It connects to a shared demo Firestore project, so please use test data only and do not enter real financial information.
+
+Create `.env` in the project root:
+
+```env
+EXPO_PUBLIC_FIREBASE_API_KEY=AIzaSyDdBZDHiOsQshQrhYam0aXme-Vilwz9W4I
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=spendsnap-d8317.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=spendsnap-d8317
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=spendsnap-d8317.firebasestorage.app
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=824207811936
+EXPO_PUBLIC_FIREBASE_APP_ID=1:824207811936:web:9441cd5d5bc2396997ea05
+EXPO_PUBLIC_OPENAI_API_KEY=
+```
+
+The OpenAI key is intentionally blank because SMS parsing is not part of the Milestone 1 POC.
+
 ## Project Structure
 
 ```text

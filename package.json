@@ -10,10 +10,11 @@
     "web": "expo start --web"
   },
   "dependencies": {
-    "@react-native-picker/picker": "^2.11.1",
+    "@react-native-picker/picker": "2.11.1",
     "@react-navigation/bottom-tabs": "^7.7.3",
     "@react-navigation/native": "^7.1.17",
-    "expo": "~54.0.0",
+    "expo": "~54.0.35",
+    "expo-dev-client": "~6.0.21",
     "expo-quick-actions": "^6.0.0",
     "expo-status-bar": "~3.0.9",
     "firebase": "^10.14.1",
