@@ -395,7 +395,7 @@ function SpendingChart({ data, maxValue }) {
   );
 }
 
-export default function SpendingSummaryScreen() {
+export default function SpendingSummaryScreen({ user }) {
   const [expenses, setExpenses] = useState([]);
   const [budget, setBudget] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState("daily");
@@ -409,6 +409,7 @@ export default function SpendingSummaryScreen() {
 
   useEffect(() => {
     const unsubscribe = subscribeToExpenses(
+      user.uid,
       (items) => {
         setExpenses(items);
         setErrorMessage("");
@@ -422,10 +423,11 @@ export default function SpendingSummaryScreen() {
     );
 
     return unsubscribe;
-  }, []);
+  }, [user.uid]);
 
   useEffect(() => {
     const unsubscribe = subscribeToMonthlyBudget(
+      user.uid,
       (item) => {
         setBudget(item);
         setBudgetErrorMessage("");
@@ -439,7 +441,7 @@ export default function SpendingSummaryScreen() {
     );
 
     return unsubscribe;
-  }, []);
+  }, [user.uid]);
 
   const summary = useMemo(() => summarizeExpenses(expenses, selectedPeriod), [expenses, selectedPeriod]);
   const monthlySpent = useMemo(() => summarizeCurrentMonth(expenses), [expenses]);
@@ -461,7 +463,7 @@ export default function SpendingSummaryScreen() {
 
     try {
       setSavingBudget(true);
-      await saveMonthlyBudget(parsedAmount);
+      await saveMonthlyBudget(user.uid, parsedAmount);
       setBudgetModalVisible(false);
     } catch (error) {
       console.warn("Unable to save monthly budget.", error);

@@ -17,7 +17,7 @@ import { saveExpense } from "../services/firebase";
 
 const CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Others"];
 
-export default function AddExpenseScreen() {
+export default function AddExpenseScreen({ user }) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [notes, setNotes] = useState("");
@@ -36,7 +36,7 @@ export default function AddExpenseScreen() {
     try {
       setSaving(true);
 
-      await saveExpense({
+      await saveExpense(user.uid, {
         amount: parsedAmount,
         category,
         notes

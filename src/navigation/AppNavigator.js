@@ -10,7 +10,7 @@ import SpendingSummaryScreen from "../screens/SpendingSummaryScreen";
 const Tab = createBottomTabNavigator();
 const LOG_EXPENSE_ACTION_ID = "log-expense";
 
-export default function AppNavigator() {
+export default function AppNavigator({ onSignOut, user }) {
   const navigationRef = useNavigationContainerRef();
   const pendingQuickActionRef = useRef(QuickActions.initial ?? null);
 
@@ -90,9 +90,15 @@ export default function AppNavigator() {
           tabBarInactiveTintColor: "#64748B"
         }}
       >
-        <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Add Expense" component={AddExpenseScreen} />
-        <Tab.Screen name="Summary" component={SpendingSummaryScreen} />
+        <Tab.Screen name="Home">
+          {() => <HomeScreen onSignOut={onSignOut} user={user} />}
+        </Tab.Screen>
+        <Tab.Screen name="Add Expense">
+          {() => <AddExpenseScreen user={user} />}
+        </Tab.Screen>
+        <Tab.Screen name="Summary">
+          {() => <SpendingSummaryScreen user={user} />}
+        </Tab.Screen>
       </Tab.Navigator>
     </NavigationContainer>
   );
