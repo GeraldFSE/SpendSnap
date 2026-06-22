@@ -1,15 +1,12 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeApp, getApps } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
   getAuth,
-  getReactNativePersistence,
-  initializeAuth,
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
   signOut
-} from "@firebase/auth";
+} from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -34,16 +31,6 @@ const firebaseConfig = {
 // Reuse the Firebase app during Fast Refresh so Expo does not initialize twice.
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-function initializeFirebaseAuth() {
-  try {
-    return initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage)
-    });
-  } catch (error) {
-    return getAuth(app);
-  }
-}
-
 function requireUserId(userId) {
   if (!userId) {
     throw new Error("A Firebase user ID is required.");
@@ -51,7 +38,7 @@ function requireUserId(userId) {
 }
 
 export const db = getFirestore(app);
-export const auth = initializeFirebaseAuth();
+export const auth = getAuth(app);
 
 function getExpensesRef(userId) {
   requireUserId(userId);
