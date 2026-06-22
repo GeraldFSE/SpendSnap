@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import * as QuickActions from "expo-quick-actions/build/index.js";
 import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
@@ -6,6 +6,9 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import HomeScreen from "../screens/HomeScreen";
 import AddExpenseScreen from "../screens/AddExpenseScreen";
 import SpendingSummaryScreen from "../screens/SpendingSummaryScreen";
+import GroupScreen from "../screens/GroupScreen";
+import HistoryScreen from "../screens/HistoryScreen";
+import { subscribeToUserGroupId } from "../services/firebase";
 
 const Tab = createBottomTabNavigator();
 const LOG_EXPENSE_ACTION_ID = "log-expense";
@@ -13,6 +16,19 @@ const LOG_EXPENSE_ACTION_ID = "log-expense";
 export default function AppNavigator({ onSignOut, user }) {
   const navigationRef = useNavigationContainerRef();
   const pendingQuickActionRef = useRef(QuickActions.initial ?? null);
+  const [groupId, setGroupId] = useState(user.uid);
+
+  useEffect(() => {
+    // Resolves once here so every screen (Home, Add Expense, Summary, Group, History)
+    // reads/writes the same shared budget instead of each defaulting to the user's own uid.
+    const unsubscribe = subscribeToUserGroupId(
+      user.uid,
+      (id) => setGroupId(id),
+      (error) => console.warn("Unable to load current group.", error)
+    );
+
+    return unsubscribe;
+  }, [user.uid]);
 
   const openAddExpenseScreen = useCallback(() => {
     if (navigationRef.isReady()) {
@@ -91,13 +107,19 @@ export default function AppNavigator({ onSignOut, user }) {
         }}
       >
         <Tab.Screen name="Home">
-          {() => <HomeScreen onSignOut={onSignOut} user={user} />}
+          {() => <HomeScreen onSignOut={onSignOut} user={user} groupId={groupId} />}
         </Tab.Screen>
         <Tab.Screen name="Add Expense">
-          {() => <AddExpenseScreen user={user} />}
+          {() => <AddExpenseScreen user={user} groupId={groupId} />}
         </Tab.Screen>
         <Tab.Screen name="Summary">
-          {() => <SpendingSummaryScreen user={user} />}
+          {() => <SpendingSummaryScreen user={user} groupId={groupId} />}
+        </Tab.Screen>
+        <Tab.Screen name="History">
+          {() => <HistoryScreen user={user} groupId={groupId} />}
+        </Tab.Screen>
+        <Tab.Screen name="Group">
+          {() => <GroupScreen user={user} groupId={groupId} />}
         </Tab.Screen>
       </Tab.Navigator>
     </NavigationContainer>

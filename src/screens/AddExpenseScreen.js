@@ -17,7 +17,7 @@ import { saveExpense } from "../services/firebase";
 
 const CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Others"];
 
-export default function AddExpenseScreen({ user }) {
+export default function AddExpenseScreen({ user, groupId }) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [notes, setNotes] = useState("");
@@ -39,7 +39,8 @@ export default function AddExpenseScreen({ user }) {
       await saveExpense(user.uid, {
         amount: parsedAmount,
         category,
-        notes
+        notes,
+        groupId
       });
 
       // Reset the form after Firestore confirms the write.

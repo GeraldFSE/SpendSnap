@@ -3,15 +3,16 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "
 import ExpenseItem from "../components/ExpenseItem";
 import { subscribeToExpenses } from "../services/firebase";
 
-export default function HomeScreen({ onSignOut, user }) {
+export default function HomeScreen({ onSignOut, user, groupId }) {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    // Subscribe once when the screen mounts and clean up the Firestore listener on unmount.
+    // groupId defaults to the user's own uid until they join/create a shared budget,
+    // so this stays a personal feed for solo users and a shared one for group members.
     const unsubscribe = subscribeToExpenses(
-      user.uid,
+      groupId,
       (items) => {
         setExpenses(items);
         setErrorMessage("");
@@ -25,7 +26,7 @@ export default function HomeScreen({ onSignOut, user }) {
     );
 
     return unsubscribe;
-  }, [user.uid]);
+  }, [groupId]);
 
   if (loading) {
     return (

@@ -14,6 +14,7 @@ import {
   addDoc,
   collection,
   collectionGroup,
+  deleteField,
   doc,
   getFirestore,
   onSnapshot,
@@ -21,6 +22,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
   where
 } from "firebase/firestore";
 
@@ -67,6 +69,19 @@ function getExpensesRef(userId) {
 function getMonthlyBudgetRef(userId) {
   requireUserId(userId);
   return doc(db, "users", userId, "settings", "monthlyBudget");
+}
+
+function getUserGroupSettingsRef(userId) {
+  requireUserId(userId);
+  return doc(db, "users", userId, "settings", "group");
+}
+
+function getGroupRef(groupId) {
+  if (!groupId) {
+    throw new Error("A group ID is required.");
+  }
+
+  return doc(db, "groups", groupId);
 }
 
 export function subscribeToAuthState(onUser, onError) {
@@ -155,4 +170,68 @@ export function subscribeToMonthlyBudget(userId, onBudget, onError) {
     },
     onError
   );
+}
+
+export function subscribeToUserGroupId(userId, onGroupId, onError) {
+  // A user's groupId defaults to their own uid until they create or join a shared budget.
+  return onSnapshot(
+    getUserGroupSettingsRef(userId),
+    (snapshot) => {
+      onGroupId(snapshot.exists() ? snapshot.data().groupId ?? userId : userId);
+    },
+    onError
+  );
+}
+
+export function subscribeToGroup(groupId, onGroup, onError) {
+  return onSnapshot(
+    getGroupRef(groupId),
+    (snapshot) => {
+      onGroup(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+    },
+    onError
+  );
+}
+
+export async function createGroup(userId, name) {
+  requireUserId(userId);
+  const groupRef = doc(collection(db, "groups"));
+
+  await setDoc(groupRef, {
+    name: name?.trim() || "Shared budget",
+    ownerId: userId,
+    members: { [userId]: true },
+    createdAt: serverTimestamp()
+  });
+
+  await setDoc(getUserGroupSettingsRef(userId), { groupId: groupRef.id }, { merge: true });
+
+  return groupRef.id;
+}
+
+export async function joinGroup(userId, groupId) {
+  requireUserId(userId);
+  const trimmedGroupId = groupId?.trim();
+
+  if (!trimmedGroupId) {
+    throw new Error("Enter a group code to join.");
+  }
+
+  // A merge-set against an existing group only adds the caller's own membership key,
+  // which the security rules verify; an unknown/typo'd code fails ownerId validation instead
+  // of silently creating a bogus group.
+  await setDoc(getGroupRef(trimmedGroupId), { members: { [userId]: true } }, { merge: true });
+  await setDoc(getUserGroupSettingsRef(userId), { groupId: trimmedGroupId }, { merge: true });
+
+  return trimmedGroupId;
+}
+
+export async function leaveGroup(userId, groupId) {
+  requireUserId(userId);
+
+  if (groupId && groupId !== userId) {
+    await updateDoc(getGroupRef(groupId), { [`members.${userId}`]: deleteField() });
+  }
+
+  await setDoc(getUserGroupSettingsRef(userId), { groupId: userId }, { merge: true });
 }

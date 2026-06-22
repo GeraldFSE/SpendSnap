@@ -397,7 +397,7 @@ function SpendingChart({ data, maxValue }) {
   );
 }
 
-export default function SpendingSummaryScreen({ user }) {
+export default function SpendingSummaryScreen({ user, groupId }) {
   const [expenses, setExpenses] = useState([]);
   const [budget, setBudget] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState("daily");
@@ -411,7 +411,7 @@ export default function SpendingSummaryScreen({ user }) {
 
   useEffect(() => {
     const unsubscribe = subscribeToExpenses(
-      user.uid,
+      groupId,
       (items) => {
         setExpenses(items);
         setErrorMessage("");
@@ -425,7 +425,7 @@ export default function SpendingSummaryScreen({ user }) {
     );
 
     return unsubscribe;
-  }, [user.uid]);
+  }, [groupId]);
 
   useEffect(() => {
     const unsubscribe = subscribeToMonthlyBudget(

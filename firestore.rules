@@ -12,6 +12,15 @@ service cloud.firestore {
         && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members;
     }
 
+    // True only when the sole change to `members` is the caller adding their own key
+    // (an invite-code join) -- no other key may be added, removed, or changed.
+    function isSelfJoin(existingMembers, incomingMembers) {
+      let membersDiff = existingMembers.diff(incomingMembers);
+      return membersDiff.addedKeys().hasOnly([request.auth.uid])
+        && membersDiff.removedKeys().size() == 0
+        && membersDiff.changedKeys().size() == 0;
+    }
+
     // Membership lookup table for shared budgets. Members is a map of uid -> true
     // so rules can check membership without reading an array.
     match /groups/{groupId} {
@@ -24,8 +33,11 @@ service cloud.firestore {
         && request.resource.data.members[request.auth.uid] == true;
 
       allow update: if isSignedIn()
-        && request.auth.uid in resource.data.members
-        && request.resource.data.ownerId == resource.data.ownerId;
+        && request.resource.data.ownerId == resource.data.ownerId
+        && (
+          request.auth.uid in resource.data.members
+          || isSelfJoin(resource.data.members, request.resource.data.members)
+        );
 
       allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
     }

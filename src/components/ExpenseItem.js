@@ -16,12 +16,15 @@ function formatDate(timestamp) {
   }).format(date);
 }
 
-export default function ExpenseItem({ expense }) {
+export default function ExpenseItem({ expense, attribution }) {
   return (
     <View style={styles.card}>
       <View style={styles.details}>
         <Text style={styles.category}>{expense.category}</Text>
-        <Text style={styles.date}>{formatDate(expense.date)}</Text>
+        <Text style={styles.date}>
+          {formatDate(expense.date)}
+          {attribution ? ` · ${attribution}` : ""}
+        </Text>
         {expense.notes ? <Text style={styles.notes}>{expense.notes}</Text> : null}
       </View>
 
