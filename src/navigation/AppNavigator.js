@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
-import * as QuickActions from "expo-quick-actions";
+import * as QuickActions from "expo-quick-actions/build/index.js";
 import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import HomeScreen from "../screens/HomeScreen";

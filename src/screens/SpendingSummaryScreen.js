@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -557,45 +559,50 @@ export default function SpendingSummaryScreen({ user }) {
         visible={budgetModalVisible}
         onRequestClose={() => setBudgetModalVisible(false)}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setBudgetModalVisible(false)}>
-          <Pressable style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Monthly budget</Text>
-            <Text style={styles.modalLabel}>Budget amount</Text>
-            <TextInput
-              value={budgetInput}
-              onChangeText={setBudgetInput}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
-              style={styles.modalInput}
-            />
+        <KeyboardAvoidingView
+          behavior={Platform.select({ ios: "padding", android: "height" })}
+          style={styles.modalKeyboardView}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setBudgetModalVisible(false)}>
+            <Pressable style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Monthly budget</Text>
+              <Text style={styles.modalLabel}>Budget amount</Text>
+              <TextInput
+                value={budgetInput}
+                onChangeText={setBudgetInput}
+                placeholder="0.00"
+                keyboardType="decimal-pad"
+                style={styles.modalInput}
+              />
 
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setBudgetModalVisible(false)}
-                disabled={savingBudget}
-                style={({ pressed }) => [styles.modalSecondaryButton, pressed ? styles.modalButtonPressed : null]}
-              >
-                <Text style={styles.modalSecondaryText}>Cancel</Text>
-              </Pressable>
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={() => setBudgetModalVisible(false)}
+                  disabled={savingBudget}
+                  style={({ pressed }) => [styles.modalSecondaryButton, pressed ? styles.modalButtonPressed : null]}
+                >
+                  <Text style={styles.modalSecondaryText}>Cancel</Text>
+                </Pressable>
 
-              <Pressable
-                onPress={handleSaveBudget}
-                disabled={savingBudget}
-                style={({ pressed }) => [
-                  styles.modalPrimaryButton,
-                  pressed && !savingBudget ? styles.modalPrimaryButtonPressed : null,
-                  savingBudget ? styles.modalButtonDisabled : null
-                ]}
-              >
-                {savingBudget ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.modalPrimaryText}>Save</Text>
-                )}
-              </Pressable>
-            </View>
+                <Pressable
+                  onPress={handleSaveBudget}
+                  disabled={savingBudget}
+                  style={({ pressed }) => [
+                    styles.modalPrimaryButton,
+                    pressed && !savingBudget ? styles.modalPrimaryButtonPressed : null,
+                    savingBudget ? styles.modalButtonDisabled : null
+                  ]}
+                >
+                  {savingBudget ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.modalPrimaryText}>Save</Text>
+                  )}
+                </Pressable>
+              </View>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -842,10 +849,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginBottom: 6
   },
+  modalKeyboardView: {
+    flex: 1
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.45)",
-    justifyContent: "flex-end",
+    justifyContent: "center",
     padding: 16
   },
   modalCard: {
