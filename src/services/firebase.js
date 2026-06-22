@@ -13,13 +13,15 @@ import {
 import {
   addDoc,
   collection,
+  collectionGroup,
   doc,
   getFirestore,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-  setDoc
+  setDoc,
+  where
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -87,18 +89,26 @@ export async function signOutUser() {
   return signOut(auth);
 }
 
-export async function saveExpense(userId, { amount, category, notes }) {
+export async function saveExpense(userId, { amount, category, notes, groupId }) {
   return addDoc(getExpensesRef(userId), {
     amount: Number(amount),
     category,
     notes: notes?.trim() ?? "",
-    date: serverTimestamp()
+    date: serverTimestamp(),
+    userId,
+    // Solo users default to their own uid, which behaves like a personal group of one.
+    groupId: groupId ?? userId
   });
 }
 
-export function subscribeToExpenses(userId, onExpenses, onError) {
-  // Real-time listener keeps the Home screen in sync with Firestore changes.
-  const expensesQuery = query(getExpensesRef(userId), orderBy("date", "desc"));
+export function subscribeToExpenses(groupId, onExpenses, onError) {
+  // Collection-group query spans every member's "expenses" subcollection so shared
+  // groups sync in real time, while solo users just see their own groupId-of-one.
+  const expensesQuery = query(
+    collectionGroup(db, "expenses"),
+    where("groupId", "==", groupId),
+    orderBy("date", "desc")
+  );
 
   return onSnapshot(
     expensesQuery,
