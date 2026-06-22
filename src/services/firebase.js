@@ -2,11 +2,13 @@ import { initializeApp, getApps } from "firebase/app";
 import {
   addDoc,
   collection,
+  doc,
   getFirestore,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp
+  serverTimestamp,
+  setDoc
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -23,6 +25,7 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 
 export const db = getFirestore(app);
 const expensesRef = collection(db, "expenses");
+const monthlyBudgetRef = doc(db, "settings", "monthlyBudget");
 
 export async function saveExpense({ amount, category, notes }) {
   return addDoc(expensesRef, {
@@ -46,6 +49,39 @@ export function subscribeToExpenses(onExpenses, onError) {
       }));
 
       onExpenses(expenses);
+    },
+    onError
+  );
+}
+
+export async function saveMonthlyBudget(amount) {
+  return setDoc(
+    monthlyBudgetRef,
+    {
+      amount: Number(amount),
+      currency: "USD",
+      period: "monthly",
+      warningThreshold: 0.8,
+      exceededThreshold: 1,
+      updatedAt: serverTimestamp()
+    },
+    { merge: true }
+  );
+}
+
+export function subscribeToMonthlyBudget(onBudget, onError) {
+  return onSnapshot(
+    monthlyBudgetRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onBudget(null);
+        return;
+      }
+
+      onBudget({
+        id: snapshot.id,
+        ...snapshot.data()
+      });
     },
     onError
   );
