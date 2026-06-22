@@ -9,7 +9,7 @@ import {
   signInAnonymously,
   signInWithEmailAndPassword,
   signOut
-} from "firebase/auth";
+} from "@firebase/auth";
 import {
   addDoc,
   collection,
