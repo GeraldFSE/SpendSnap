@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.spendsnap.app"
+      "bundleIdentifier": "com.spendsnap.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.spendsnap.app",
@@ -19,6 +22,12 @@
     },
     "plugins": [
       "expo-quick-actions"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c5741554-e3fe-4548-9b5a-d992e7daadae"
+      }
+    },
+    "owner": "bluueyz"
   }
 }
