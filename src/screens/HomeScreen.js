@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import ExpenseItem from "../components/ExpenseItem";
 import { subscribeToExpenses } from "../services/firebase";
 
-export default function HomeScreen() {
+export default function HomeScreen({ onSignOut, user }) {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
@@ -11,6 +11,7 @@ export default function HomeScreen() {
   useEffect(() => {
     // Subscribe once when the screen mounts and clean up the Firestore listener on unmount.
     const unsubscribe = subscribeToExpenses(
+      user.uid,
       (items) => {
         setExpenses(items);
         setErrorMessage("");
@@ -24,7 +25,7 @@ export default function HomeScreen() {
     );
 
     return unsubscribe;
-  }, []);
+  }, [user.uid]);
 
   if (loading) {
     return (
@@ -42,10 +43,26 @@ export default function HomeScreen() {
       <FlatList
         data={expenses}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={expenses.length === 0 ? styles.emptyList : styles.list}
+        contentContainerStyle={styles.list}
         renderItem={({ item }) => <ExpenseItem expense={item} />}
+        ListHeaderComponent={
+          <View style={styles.accountBar}>
+            <View style={styles.accountCopy}>
+              <Text style={styles.accountLabel}>Signed in</Text>
+              <Text style={styles.accountValue} numberOfLines={1}>
+                {user.isAnonymous ? "Guest account" : user.email}
+              </Text>
+            </View>
+            <Pressable
+              onPress={onSignOut}
+              style={({ pressed }) => [styles.signOutButton, pressed ? styles.signOutButtonPressed : null]}
+            >
+              <Text style={styles.signOutText}>Sign out</Text>
+            </Pressable>
+          </View>
+        }
         ListEmptyComponent={
-          <View style={styles.centered}>
+          <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No expenses yet</Text>
             <Text style={styles.mutedText}>Use Add Expense or the app icon quick action to log one.</Text>
           </View>
@@ -65,10 +82,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 10
   },
-  emptyList: {
-    flexGrow: 1,
-    justifyContent: "center"
-  },
   centered: {
     flex: 1,
     alignItems: "center",
@@ -86,11 +99,61 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: "center"
   },
+  emptyState: {
+    alignItems: "center",
+    borderColor: "#E2E8F0",
+    borderRadius: 8,
+    borderStyle: "dashed",
+    borderWidth: 1,
+    marginTop: 4,
+    padding: 24
+  },
   errorText: {
     backgroundColor: "#FEE2E2",
     borderRadius: 8,
     color: "#991B1B",
     marginTop: 16,
     padding: 12
+  },
+  accountBar: {
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+    padding: 14
+  },
+  accountCopy: {
+    flex: 1,
+    minWidth: 0
+  },
+  accountLabel: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  accountValue: {
+    color: "#0F172A",
+    fontSize: 15,
+    fontWeight: "800",
+    marginTop: 2
+  },
+  signOutButton: {
+    backgroundColor: "#F1F5F9",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9
+  },
+  signOutButtonPressed: {
+    backgroundColor: "#E2E8F0"
+  },
+  signOutText: {
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: "800"
   }
 });
