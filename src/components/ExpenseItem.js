@@ -1,5 +1,6 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { formatCurrency } from "../utils/currency";
 
 function formatDate(timestamp) {
   const date = timestamp?.toDate ? timestamp.toDate() : null;
@@ -28,7 +29,7 @@ export default function ExpenseItem({ expense, attribution }) {
         {expense.notes ? <Text style={styles.notes}>{expense.notes}</Text> : null}
       </View>
 
-      <Text style={styles.amount}>${Number(expense.amount ?? 0).toFixed(2)}</Text>
+      <Text style={styles.amount}>{formatCurrency(expense.amount)}</Text>
     </View>
   );
 }

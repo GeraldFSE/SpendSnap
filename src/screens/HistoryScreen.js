@@ -1,19 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
 import ExpenseItem from "../components/ExpenseItem";
-import { subscribeToExpenses } from "../services/firebase";
+import { subscribeToPersonalExpenses } from "../services/firebase";
+import { formatCurrency } from "../utils/currency";
 
 const CATEGORY_COLORS = ["#2563EB", "#0F766E", "#EA580C", "#7C3AED", "#C2410C", "#0891B2"];
-
-const currencyFormatter = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2
-});
-
-function formatCurrency(value) {
-  return currencyFormatter.format(Number(value) || 0);
-}
 
 function summarizeByCategory(expenses) {
   const totals = new Map();
@@ -35,16 +26,14 @@ function summarizeByCategory(expenses) {
     .sort((a, b) => b.amount - a.amount);
 }
 
-export default function HistoryScreen({ user, groupId }) {
+export default function HistoryScreen({ user }) {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const sharedGroup = Boolean(groupId) && groupId !== user.uid;
-
   useEffect(() => {
-    const unsubscribe = subscribeToExpenses(
-      groupId,
+    const unsubscribe = subscribeToPersonalExpenses(
+      user.uid,
       (items) => {
         setExpenses(items);
         setErrorMessage("");
@@ -58,7 +47,7 @@ export default function HistoryScreen({ user, groupId }) {
     );
 
     return unsubscribe;
-  }, [groupId]);
+  }, [user.uid]);
 
   const categoryBreakdown = useMemo(() => summarizeByCategory(expenses), [expenses]);
   const total = useMemo(() => expenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0), [expenses]);
@@ -78,18 +67,13 @@ export default function HistoryScreen({ user, groupId }) {
       contentContainerStyle={styles.list}
       data={expenses}
       keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <ExpenseItem
-          expense={item}
-          attribution={sharedGroup ? (item.userId === user.uid ? "You" : `Member ${item.userId?.slice(0, 6)}`) : null}
-        />
-      )}
+      renderItem={({ item }) => <ExpenseItem expense={item} />}
       ListHeaderComponent={
         <View style={styles.headerSection}>
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
           <View style={styles.totalCard}>
-            <Text style={styles.cardEyebrow}>{sharedGroup ? "Group total" : "Total spent"}</Text>
+            <Text style={styles.cardEyebrow}>Total spent</Text>
             <Text style={styles.totalAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
               {formatCurrency(total)}
             </Text>

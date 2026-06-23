@@ -17,7 +17,7 @@ import { saveExpense } from "../services/firebase";
 
 const CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Others"];
 
-export default function AddExpenseScreen({ user, groupId }) {
+export default function AddExpenseScreen({ user, groupIds }) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [notes, setNotes] = useState("");
@@ -40,7 +40,8 @@ export default function AddExpenseScreen({ user, groupId }) {
         amount: parsedAmount,
         category,
         notes,
-        groupId
+        // Mirror this expense into every group the user belongs to.
+        groupIds: Array.isArray(groupIds) ? groupIds : []
       });
 
       // Reset the form after Firestore confirms the write.

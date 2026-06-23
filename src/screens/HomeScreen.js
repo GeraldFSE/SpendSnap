@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import ExpenseItem from "../components/ExpenseItem";
-import { subscribeToExpenses } from "../services/firebase";
+import { subscribeToPersonalExpenses } from "../services/firebase";
 
-export default function HomeScreen({ onSignOut, user, groupId }) {
+export default function HomeScreen({ onSignOut, user }) {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    // groupId defaults to the user's own uid until they join/create a shared budget,
-    // so this stays a personal feed for solo users and a shared one for group members.
-    const unsubscribe = subscribeToExpenses(
-      groupId,
+    // Home is a personal feed of the signed-in user's own expenses, regardless of any
+    // groups they belong to.
+    const unsubscribe = subscribeToPersonalExpenses(
+      user.uid,
       (items) => {
         setExpenses(items);
         setErrorMessage("");
@@ -26,7 +26,7 @@ export default function HomeScreen({ onSignOut, user, groupId }) {
     );
 
     return unsubscribe;
-  }, [groupId]);
+  }, [user.uid]);
 
   if (loading) {
     return (

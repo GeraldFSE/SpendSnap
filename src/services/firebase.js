@@ -12,10 +12,13 @@ import {
 } from "firebase/auth";
 import {
   addDoc,
+  arrayRemove,
+  arrayUnion,
   collection,
   collectionGroup,
   deleteField,
   doc,
+  getDocs,
   getFirestore,
   onSnapshot,
   orderBy,
@@ -23,7 +26,8 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
-  where
+  where,
+  writeBatch
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -71,9 +75,9 @@ function getMonthlyBudgetRef(userId) {
   return doc(db, "users", userId, "settings", "monthlyBudget");
 }
 
-function getUserGroupSettingsRef(userId) {
+function getUserGroupsSettingsRef(userId) {
   requireUserId(userId);
-  return doc(db, "users", userId, "settings", "group");
+  return doc(db, "users", userId, "settings", "groups");
 }
 
 function getGroupRef(groupId) {
@@ -104,39 +108,44 @@ export async function signOutUser() {
   return signOut(auth);
 }
 
-export async function saveExpense(userId, { amount, category, notes, groupId }) {
+export async function saveExpense(userId, { amount, category, notes, groupIds }) {
   return addDoc(getExpensesRef(userId), {
     amount: Number(amount),
     category,
     notes: notes?.trim() ?? "",
     date: serverTimestamp(),
     userId,
-    // Solo users default to their own uid, which behaves like a personal group of one.
-    groupId: groupId ?? userId
+    // An expense belongs to its author and is mirrored into every group they're in,
+    // so group members see each other's spending. Empty when the user is solo.
+    groupIds: Array.isArray(groupIds) ? groupIds : []
   });
 }
 
-export function subscribeToExpenses(groupId, onExpenses, onError) {
-  // Collection-group query spans every member's "expenses" subcollection so shared
-  // groups sync in real time, while solo users just see their own groupId-of-one.
-  const expensesQuery = query(
+function mapExpenses(snapshot) {
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data({ serverTimestamps: "estimate" })
+  }));
+}
+
+export function subscribeToPersonalExpenses(userId, onExpenses, onError) {
+  // Home, Summary and History show the caller's own expenses only -- never affected by
+  // creating, joining or leaving a group.
+  const personalQuery = query(getExpensesRef(userId), orderBy("date", "desc"));
+
+  return onSnapshot(personalQuery, (snapshot) => onExpenses(mapExpenses(snapshot)), onError);
+}
+
+export function subscribeToGroupExpenses(groupId, onExpenses, onError) {
+  // Collection-group query spans every member's "expenses" subcollection, surfacing all
+  // spending mirrored into this group (each member's docs carry the group id in groupIds).
+  const groupQuery = query(
     collectionGroup(db, "expenses"),
-    where("groupId", "==", groupId),
+    where("groupIds", "array-contains", groupId),
     orderBy("date", "desc")
   );
 
-  return onSnapshot(
-    expensesQuery,
-    (snapshot) => {
-      const expenses = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data({ serverTimestamps: "estimate" })
-      }));
-
-      onExpenses(expenses);
-    },
-    onError
-  );
+  return onSnapshot(groupQuery, (snapshot) => onExpenses(mapExpenses(snapshot)), onError);
 }
 
 export async function saveMonthlyBudget(userId, amount) {
@@ -144,7 +153,7 @@ export async function saveMonthlyBudget(userId, amount) {
     getMonthlyBudgetRef(userId),
     {
       amount: Number(amount),
-      currency: "USD",
+      currency: "SGD",
       period: "monthly",
       warningThreshold: 0.8,
       exceededThreshold: 1,
@@ -172,12 +181,13 @@ export function subscribeToMonthlyBudget(userId, onBudget, onError) {
   );
 }
 
-export function subscribeToUserGroupId(userId, onGroupId, onError) {
-  // A user's groupId defaults to their own uid until they create or join a shared budget.
+export function subscribeToUserGroups(userId, onGroupIds, onError) {
+  // The list of groups a user belongs to; empty until they create or join one.
   return onSnapshot(
-    getUserGroupSettingsRef(userId),
+    getUserGroupsSettingsRef(userId),
     (snapshot) => {
-      onGroupId(snapshot.exists() ? snapshot.data().groupId ?? userId : userId);
+      const ids = snapshot.exists() ? snapshot.data().ids : null;
+      onGroupIds(Array.isArray(ids) ? ids : []);
     },
     onError
   );
@@ -193,6 +203,21 @@ export function subscribeToGroup(groupId, onGroup, onError) {
   );
 }
 
+// Mirror a membership change across every one of the user's existing expenses so the
+// group sees their full history (on join) and stops seeing it (on leave). Batched in
+// chunks to stay under Firestore's 500-write limit.
+async function retagExpenseGroup(userId, groupId, operation) {
+  const snapshot = await getDocs(getExpensesRef(userId));
+
+  for (let index = 0; index < snapshot.docs.length; index += 450) {
+    const batch = writeBatch(db);
+    snapshot.docs.slice(index, index + 450).forEach((document) => {
+      batch.update(document.ref, { groupIds: operation });
+    });
+    await batch.commit();
+  }
+}
+
 export async function createGroup(userId, name) {
   requireUserId(userId);
   const groupRef = doc(collection(db, "groups"));
@@ -204,7 +229,8 @@ export async function createGroup(userId, name) {
     createdAt: serverTimestamp()
   });
 
-  await setDoc(getUserGroupSettingsRef(userId), { groupId: groupRef.id }, { merge: true });
+  await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayUnion(groupRef.id) }, { merge: true });
+  await retagExpenseGroup(userId, groupRef.id, arrayUnion(groupRef.id));
 
   return groupRef.id;
 }
@@ -218,10 +244,11 @@ export async function joinGroup(userId, groupId) {
   }
 
   // A merge-set against an existing group only adds the caller's own membership key,
-  // which the security rules verify; an unknown/typo'd code fails ownerId validation instead
+  // which the security rules verify; an unknown/typo'd code fails validation instead
   // of silently creating a bogus group.
   await setDoc(getGroupRef(trimmedGroupId), { members: { [userId]: true } }, { merge: true });
-  await setDoc(getUserGroupSettingsRef(userId), { groupId: trimmedGroupId }, { merge: true });
+  await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayUnion(trimmedGroupId) }, { merge: true });
+  await retagExpenseGroup(userId, trimmedGroupId, arrayUnion(trimmedGroupId));
 
   return trimmedGroupId;
 }
@@ -229,9 +256,11 @@ export async function joinGroup(userId, groupId) {
 export async function leaveGroup(userId, groupId) {
   requireUserId(userId);
 
-  if (groupId && groupId !== userId) {
-    await updateDoc(getGroupRef(groupId), { [`members.${userId}`]: deleteField() });
+  if (!groupId) {
+    return;
   }
 
-  await setDoc(getUserGroupSettingsRef(userId), { groupId: userId }, { merge: true });
+  await updateDoc(getGroupRef(groupId), { [`members.${userId}`]: deleteField() });
+  await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayRemove(groupId) }, { merge: true });
+  await retagExpenseGroup(userId, groupId, arrayRemove(groupId));
 }

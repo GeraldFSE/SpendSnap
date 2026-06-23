@@ -12,7 +12,8 @@ import {
   TextInput,
   View
 } from "react-native";
-import { saveMonthlyBudget, subscribeToExpenses, subscribeToMonthlyBudget } from "../services/firebase";
+import { saveMonthlyBudget, subscribeToPersonalExpenses, subscribeToMonthlyBudget } from "../services/firebase";
+import { formatCurrency, formatCompactCurrency } from "../utils/currency";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CHART_HEIGHT = 148;
@@ -30,19 +31,6 @@ const BUDGET_COLORS = {
   exceeded: "#DC2626"
 };
 
-const currencyFormatter = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2
-});
-
-const compactCurrencyFormatter = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "USD",
-  notation: "compact",
-  maximumFractionDigits: 1
-});
-
 const dayLabelFormatter = new Intl.DateTimeFormat(undefined, {
   weekday: "short",
   day: "numeric"
@@ -56,20 +44,6 @@ const dateLabelFormatter = new Intl.DateTimeFormat(undefined, {
 const monthLabelFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short"
 });
-
-function formatCurrency(value) {
-  return currencyFormatter.format(Number(value) || 0);
-}
-
-function formatCompactCurrency(value) {
-  const amount = Number(value) || 0;
-
-  if (amount === 0) {
-    return "$0";
-  }
-
-  return compactCurrencyFormatter.format(amount);
-}
 
 function toExpenseDate(value) {
   if (!value) {
@@ -397,7 +371,7 @@ function SpendingChart({ data, maxValue }) {
   );
 }
 
-export default function SpendingSummaryScreen({ user, groupId }) {
+export default function SpendingSummaryScreen({ user }) {
   const [expenses, setExpenses] = useState([]);
   const [budget, setBudget] = useState(null);
   const [selectedPeriod, setSelectedPeriod] = useState("daily");
@@ -410,8 +384,8 @@ export default function SpendingSummaryScreen({ user, groupId }) {
   const [savingBudget, setSavingBudget] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = subscribeToExpenses(
-      groupId,
+    const unsubscribe = subscribeToPersonalExpenses(
+      user.uid,
       (items) => {
         setExpenses(items);
         setErrorMessage("");
@@ -425,7 +399,7 @@ export default function SpendingSummaryScreen({ user, groupId }) {
     );
 
     return unsubscribe;
-  }, [groupId]);
+  }, [user.uid]);
 
   useEffect(() => {
     const unsubscribe = subscribeToMonthlyBudget(

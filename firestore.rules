@@ -7,18 +7,21 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isGroupMember(groupId) {
-      return exists(/databases/$(database)/documents/groups/$(groupId))
-        && request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members;
+    // The set of group ids the caller currently belongs to (or [] before they join any).
+    // Used to authorize reading fellow group members' expenses without a per-doc get().
+    function callerGroupIds() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/settings/groups)
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)/settings/groups).data.get('ids', [])
+        : [];
     }
 
-    // True only when the sole change to `members` is the caller adding their own key
-    // (an invite-code join) -- no other key may be added, removed, or changed.
+    // An invite-code join: the only change to `members` is the caller adding their own
+    // key as `true`, and they weren't already a member. affectedKeys() is direction-
+    // independent, so this avoids the addedKeys()/removedKeys() orientation pitfall.
     function isSelfJoin(existingMembers, incomingMembers) {
-      let membersDiff = existingMembers.diff(incomingMembers);
-      return membersDiff.addedKeys().hasOnly([request.auth.uid])
-        && membersDiff.removedKeys().size() == 0
-        && membersDiff.changedKeys().size() == 0;
+      return incomingMembers.diff(existingMembers).affectedKeys().hasOnly([request.auth.uid])
+        && incomingMembers[request.auth.uid] == true
+        && !(request.auth.uid in existingMembers);
     }
 
     // Membership lookup table for shared budgets. Members is a map of uid -> true
@@ -44,14 +47,15 @@ service cloud.firestore {
 
     match /users/{userId} {
 
+      // Direct/own-subcollection access. Home, Summary and History read the caller's
+      // own expenses through this path; cross-member group reads go through the
+      // collection-group rule below instead.
       match /expenses/{expenseId} {
-        allow read: if isSignedIn()
-          && (request.auth.uid == userId || isGroupMember(resource.data.groupId));
+        allow read: if isSignedIn() && request.auth.uid == userId;
 
         allow create: if isSignedIn()
           && request.auth.uid == userId
-          && request.resource.data.userId == userId
-          && (request.resource.data.groupId == userId || isGroupMember(request.resource.data.groupId));
+          && request.resource.data.userId == userId;
 
         allow update, delete: if isSignedIn() && request.auth.uid == userId;
       }
@@ -61,16 +65,13 @@ service cloud.firestore {
       }
     }
 
-    // The nested match above only governs direct-path/subcollection access. A
-    // collectionGroup("expenses") query is a separate request shape that's only
-    // eligible under a recursive-wildcard match, so it needs its own read rule here.
-    // List-time rule evaluation can only see resource.data fields referenced by the
-    // query's filters/orderBy (groupId, date) -- resource.data.userId isn't part of
-    // the query and reading it throws "Property userId is undefined", so the owner
-    // check has to go through groupId (which defaults to the owner's own uid) instead.
+    // A collectionGroup("expenses") query (used by the Group tab) is a distinct request
+    // shape only eligible under a recursive-wildcard match. List-time evaluation can only
+    // read fields the query filters/orders on (groupIds, date), so the rule must touch
+    // nothing else: a caller may read an expense if they share a group with its author.
     match /{path=**}/expenses/{expenseId} {
       allow read: if isSignedIn()
-        && (resource.data.groupId == request.auth.uid || isGroupMember(resource.data.groupId));
+        && resource.data.get('groupIds', []).hasAny(callerGroupIds());
     }
 
     match /{document=**} {

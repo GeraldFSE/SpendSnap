@@ -3,28 +3,38 @@ import { StatusBar } from "expo-status-bar";
 import * as QuickActions from "expo-quick-actions/build/index.js";
 import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { Ionicons } from "@expo/vector-icons";
 import HomeScreen from "../screens/HomeScreen";
 import AddExpenseScreen from "../screens/AddExpenseScreen";
 import SpendingSummaryScreen from "../screens/SpendingSummaryScreen";
 import GroupScreen from "../screens/GroupScreen";
 import HistoryScreen from "../screens/HistoryScreen";
-import { subscribeToUserGroupId } from "../services/firebase";
+import { subscribeToUserGroups } from "../services/firebase";
 
 const Tab = createBottomTabNavigator();
 const LOG_EXPENSE_ACTION_ID = "log-expense";
 
+// Maps each tab to its Ionicons glyph (filled when focused, outline when not).
+const TAB_ICONS = {
+  Home: "home",
+  "Add Expense": "add-circle",
+  Summary: "stats-chart",
+  History: "time",
+  Group: "people"
+};
+
 export default function AppNavigator({ onSignOut, user }) {
   const navigationRef = useNavigationContainerRef();
   const pendingQuickActionRef = useRef(QuickActions.initial ?? null);
-  const [groupId, setGroupId] = useState(user.uid);
+  const [groupIds, setGroupIds] = useState([]);
 
   useEffect(() => {
-    // Resolves once here so every screen (Home, Add Expense, Summary, Group, History)
-    // reads/writes the same shared budget instead of each defaulting to the user's own uid.
-    const unsubscribe = subscribeToUserGroupId(
+    // Resolves the user's group memberships once here so new expenses get mirrored into
+    // every group and the Group tab knows which groups to render.
+    const unsubscribe = subscribeToUserGroups(
       user.uid,
-      (id) => setGroupId(id),
-      (error) => console.warn("Unable to load current group.", error)
+      (ids) => setGroupIds(ids),
+      (error) => console.warn("Unable to load your groups.", error)
     );
 
     return unsubscribe;
@@ -99,27 +109,31 @@ export default function AppNavigator({ onSignOut, user }) {
     >
       <StatusBar style="auto" />
       <Tab.Navigator
-        screenOptions={{
+        screenOptions={({ route }) => ({
           headerStyle: { backgroundColor: "#FFFFFF" },
           headerTitleStyle: { fontWeight: "700" },
           tabBarActiveTintColor: "#2563EB",
-          tabBarInactiveTintColor: "#64748B"
-        }}
+          tabBarInactiveTintColor: "#64748B",
+          tabBarIcon: ({ focused, color, size }) => {
+            const name = TAB_ICONS[route.name] ?? "ellipse";
+            return <Ionicons name={focused ? name : `${name}-outline`} size={size} color={color} />;
+          }
+        })}
       >
         <Tab.Screen name="Home">
-          {() => <HomeScreen onSignOut={onSignOut} user={user} groupId={groupId} />}
+          {() => <HomeScreen onSignOut={onSignOut} user={user} />}
         </Tab.Screen>
         <Tab.Screen name="Add Expense">
-          {() => <AddExpenseScreen user={user} groupId={groupId} />}
+          {() => <AddExpenseScreen user={user} groupIds={groupIds} />}
         </Tab.Screen>
         <Tab.Screen name="Summary">
-          {() => <SpendingSummaryScreen user={user} groupId={groupId} />}
+          {() => <SpendingSummaryScreen user={user} />}
         </Tab.Screen>
         <Tab.Screen name="History">
-          {() => <HistoryScreen user={user} groupId={groupId} />}
+          {() => <HistoryScreen user={user} />}
         </Tab.Screen>
         <Tab.Screen name="Group">
-          {() => <GroupScreen user={user} groupId={groupId} />}
+          {() => <GroupScreen user={user} groupIds={groupIds} />}
         </Tab.Screen>
       </Tab.Navigator>
     </NavigationContainer>

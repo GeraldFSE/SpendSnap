@@ -4,7 +4,7 @@
       "collectionGroup": "expenses",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
-        { "fieldPath": "groupId", "order": "ASCENDING" },
+        { "fieldPath": "groupIds", "arrayConfig": "CONTAINS" },
         { "fieldPath": "date", "order": "DESCENDING" }
       ]
     }
