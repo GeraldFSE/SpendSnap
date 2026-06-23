@@ -44,8 +44,6 @@ service cloud.firestore {
 
     match /users/{userId} {
 
-      // Expenses live under their author's subcollection but are also reachable via a
-      // collectionGroup("expenses") query; this rule governs both access patterns.
       match /expenses/{expenseId} {
         allow read: if isSignedIn()
           && (request.auth.uid == userId || isGroupMember(resource.data.groupId));
@@ -61,6 +59,18 @@ service cloud.firestore {
       match /settings/{settingId} {
         allow read, write: if isSignedIn() && request.auth.uid == userId;
       }
+    }
+
+    // The nested match above only governs direct-path/subcollection access. A
+    // collectionGroup("expenses") query is a separate request shape that's only
+    // eligible under a recursive-wildcard match, so it needs its own read rule here.
+    // List-time rule evaluation can only see resource.data fields referenced by the
+    // query's filters/orderBy (groupId, date) -- resource.data.userId isn't part of
+    // the query and reading it throws "Property userId is undefined", so the owner
+    // check has to go through groupId (which defaults to the owner's own uid) instead.
+    match /{path=**}/expenses/{expenseId} {
+      allow read: if isSignedIn()
+        && (resource.data.groupId == request.auth.uid || isGroupMember(resource.data.groupId));
     }
 
     match /{document=**} {
