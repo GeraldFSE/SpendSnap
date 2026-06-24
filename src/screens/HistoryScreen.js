@@ -1,10 +1,106 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import ExpenseItem from "../components/ExpenseItem";
-import { subscribeToPersonalExpenses } from "../services/firebase";
+import { deleteExpense, subscribeToPersonalExpenses } from "../services/firebase";
 import { formatCurrency } from "../utils/currency";
 
 const CATEGORY_COLORS = ["#2563EB", "#0F766E", "#EA580C", "#7C3AED", "#C2410C", "#0891B2"];
+const FILTERS = [
+  { key: "today", label: "Today" },
+  { key: "week", label: "This Week" },
+  { key: "month", label: "This Month" },
+  { key: "all", label: "All Time" }
+];
+
+function toExpenseDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value.toDate === "function") {
+    return value.toDate();
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value.seconds === "number") {
+    return new Date(value.seconds * 1000 + Math.floor((value.nanoseconds ?? 0) / 1000000));
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+}
+
+function startOfDay(date) {
+  const nextDate = new Date(date);
+  nextDate.setHours(0, 0, 0, 0);
+  return nextDate;
+}
+
+function startOfWeek(date) {
+  const nextDate = startOfDay(date);
+  const dayOffset = (nextDate.getDay() + 6) % 7;
+  nextDate.setDate(nextDate.getDate() - dayOffset);
+  return nextDate;
+}
+
+function startOfMonth(date) {
+  const nextDate = startOfDay(date);
+  nextDate.setDate(1);
+  return nextDate;
+}
+
+function addDays(date, days) {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+}
+
+function addMonths(date, months) {
+  const nextDate = new Date(date);
+  nextDate.setMonth(nextDate.getMonth() + months);
+  return nextDate;
+}
+
+function getFilterRange(filter) {
+  const now = new Date();
+
+  if (filter === "today") {
+    const start = startOfDay(now);
+    return { start, end: addDays(start, 1) };
+  }
+
+  if (filter === "week") {
+    const start = startOfWeek(now);
+    return { start, end: addDays(start, 7) };
+  }
+
+  if (filter === "month") {
+    const start = startOfMonth(now);
+    return { start, end: addMonths(start, 1) };
+  }
+
+  return { start: null, end: null };
+}
+
+function filterExpenses(expenses, filter) {
+  const { start, end } = getFilterRange(filter);
+
+  if (!start || !end) {
+    return expenses;
+  }
+
+  return expenses.filter((expense) => {
+    const expenseDate = toExpenseDate(expense.date);
+    return expenseDate && expenseDate >= start && expenseDate < end;
+  });
+}
 
 function summarizeByCategory(expenses) {
   const totals = new Map();
@@ -28,6 +124,7 @@ function summarizeByCategory(expenses) {
 
 export default function HistoryScreen({ user }) {
   const [expenses, setExpenses] = useState([]);
+  const [selectedFilter, setSelectedFilter] = useState("month");
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -49,8 +146,34 @@ export default function HistoryScreen({ user }) {
     return unsubscribe;
   }, [user.uid]);
 
-  const categoryBreakdown = useMemo(() => summarizeByCategory(expenses), [expenses]);
-  const total = useMemo(() => expenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0), [expenses]);
+  const filteredExpenses = useMemo(() => filterExpenses(expenses, selectedFilter), [expenses, selectedFilter]);
+  const categoryBreakdown = useMemo(() => summarizeByCategory(filteredExpenses), [filteredExpenses]);
+  const total = useMemo(
+    () => filteredExpenses.reduce((sum, item) => sum + (Number(item.amount) || 0), 0),
+    [filteredExpenses]
+  );
+
+  function confirmDeleteExpense(expense) {
+    Alert.alert(
+      "Delete expense?",
+      `This will permanently delete ${formatCurrency(expense.amount)} from your history.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteExpense(user.uid, expense.id);
+            } catch (error) {
+              console.warn("Unable to delete expense.", error);
+              Alert.alert("Delete failed", "Check your connection and try again.");
+            }
+          }
+        }
+      ]
+    );
+  }
 
   if (loading) {
     return (
@@ -65,12 +188,40 @@ export default function HistoryScreen({ user }) {
     <FlatList
       style={styles.container}
       contentContainerStyle={styles.list}
-      data={expenses}
+      data={filteredExpenses}
       keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <ExpenseItem expense={item} />}
+      renderItem={({ item }) => (
+        <ExpenseItem
+          expense={item}
+          onDelete={() => confirmDeleteExpense(item)}
+          onLongPress={() => confirmDeleteExpense(item)}
+        />
+      )}
       ListHeaderComponent={
         <View style={styles.headerSection}>
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+          <View style={styles.filterTabs}>
+            {FILTERS.map((filter) => {
+              const selected = selectedFilter === filter.key;
+
+              return (
+                <Pressable
+                  key={filter.key}
+                  onPress={() => setSelectedFilter(filter.key)}
+                  style={({ pressed }) => [
+                    styles.filterTab,
+                    selected ? styles.filterTabSelected : null,
+                    pressed ? styles.filterTabPressed : null
+                  ]}
+                >
+                  <Text style={[styles.filterTabText, selected ? styles.filterTabTextSelected : null]}>
+                    {filter.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
 
           <View style={styles.totalCard}>
             <Text style={styles.cardEyebrow}>Total spent</Text>
@@ -152,6 +303,33 @@ const styles = StyleSheet.create({
   headerSection: {
     gap: 14,
     marginBottom: 10
+  },
+  filterTabs: {
+    backgroundColor: "#E2E8F0",
+    borderRadius: 8,
+    flexDirection: "row",
+    gap: 4,
+    padding: 4
+  },
+  filterTab: {
+    alignItems: "center",
+    borderRadius: 6,
+    flex: 1,
+    paddingVertical: 10
+  },
+  filterTabPressed: {
+    backgroundColor: "#DBEAFE"
+  },
+  filterTabSelected: {
+    backgroundColor: "#FFFFFF"
+  },
+  filterTabText: {
+    color: "#475569",
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  filterTabTextSelected: {
+    color: "#1D4ED8"
   },
   totalCard: {
     backgroundColor: "#FFFFFF",

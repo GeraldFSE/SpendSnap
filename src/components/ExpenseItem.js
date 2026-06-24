@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { formatCurrency } from "../utils/currency";
 
 function formatDate(timestamp) {
@@ -17,9 +17,13 @@ function formatDate(timestamp) {
   }).format(date);
 }
 
-export default function ExpenseItem({ expense, attribution }) {
+export default function ExpenseItem({ expense, attribution, onDelete, onLongPress }) {
   return (
-    <View style={styles.card}>
+    <Pressable
+      onLongPress={onLongPress}
+      delayLongPress={450}
+      style={({ pressed }) => [styles.card, pressed ? styles.cardPressed : null]}
+    >
       <View style={styles.details}>
         <Text style={styles.category}>{expense.category}</Text>
         <Text style={styles.date}>
@@ -29,8 +33,19 @@ export default function ExpenseItem({ expense, attribution }) {
         {expense.notes ? <Text style={styles.notes}>{expense.notes}</Text> : null}
       </View>
 
-      <Text style={styles.amount}>{formatCurrency(expense.amount)}</Text>
-    </View>
+      <View style={styles.trailing}>
+        <Text style={styles.amount}>{formatCurrency(expense.amount)}</Text>
+        {onDelete ? (
+          <Pressable
+            onPress={onDelete}
+            hitSlop={8}
+            style={({ pressed }) => [styles.deleteButton, pressed ? styles.deleteButtonPressed : null]}
+          >
+            <Text style={styles.deleteText}>Delete</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -44,6 +59,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     padding: 14
+  },
+  cardPressed: {
+    backgroundColor: "#F1F5F9"
   },
   details: {
     flex: 1,
@@ -64,9 +82,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 8
   },
+  trailing: {
+    alignItems: "flex-end",
+    gap: 8
+  },
   amount: {
     color: "#0F172A",
     fontSize: 17,
+    fontWeight: "800"
+  },
+  deleteButton: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  deleteButtonPressed: {
+    backgroundColor: "#FECACA"
+  },
+  deleteText: {
+    color: "#B91C1C",
+    fontSize: 12,
     fontWeight: "800"
   }
 });
