@@ -3,6 +3,8 @@ import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View }
 import ExpenseItem from "../components/ExpenseItem";
 import { deleteExpense, subscribeToPersonalExpenses } from "../services/firebase";
 import { formatCurrency } from "../utils/currency";
+import { addDays, addMonths, startOfDay, startOfMonth, startOfWeek, toExpenseDate } from "../utils/dates";
+import { summarizeByCategory } from "../utils/expenses";
 
 const CATEGORY_COLORS = ["#2563EB", "#0F766E", "#EA580C", "#7C3AED", "#C2410C", "#0891B2"];
 const FILTERS = [
@@ -11,62 +13,6 @@ const FILTERS = [
   { key: "month", label: "This Month" },
   { key: "all", label: "All Time" }
 ];
-
-function toExpenseDate(value) {
-  if (!value) {
-    return null;
-  }
-
-  if (typeof value.toDate === "function") {
-    return value.toDate();
-  }
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  if (typeof value.seconds === "number") {
-    return new Date(value.seconds * 1000 + Math.floor((value.nanoseconds ?? 0) / 1000000));
-  }
-
-  if (typeof value === "string" || typeof value === "number") {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  return null;
-}
-
-function startOfDay(date) {
-  const nextDate = new Date(date);
-  nextDate.setHours(0, 0, 0, 0);
-  return nextDate;
-}
-
-function startOfWeek(date) {
-  const nextDate = startOfDay(date);
-  const dayOffset = (nextDate.getDay() + 6) % 7;
-  nextDate.setDate(nextDate.getDate() - dayOffset);
-  return nextDate;
-}
-
-function startOfMonth(date) {
-  const nextDate = startOfDay(date);
-  nextDate.setDate(1);
-  return nextDate;
-}
-
-function addDays(date, days) {
-  const nextDate = new Date(date);
-  nextDate.setDate(nextDate.getDate() + days);
-  return nextDate;
-}
-
-function addMonths(date, months) {
-  const nextDate = new Date(date);
-  nextDate.setMonth(nextDate.getMonth() + months);
-  return nextDate;
-}
 
 function getFilterRange(filter) {
   const now = new Date();
@@ -100,26 +46,6 @@ function filterExpenses(expenses, filter) {
     const expenseDate = toExpenseDate(expense.date);
     return expenseDate && expenseDate >= start && expenseDate < end;
   });
-}
-
-function summarizeByCategory(expenses) {
-  const totals = new Map();
-
-  expenses.forEach((expense) => {
-    const amount = Number(expense.amount) || 0;
-    const category = expense.category || "Others";
-    totals.set(category, (totals.get(category) ?? 0) + amount);
-  });
-
-  const total = Array.from(totals.values()).reduce((sum, value) => sum + value, 0);
-
-  return Array.from(totals.entries())
-    .map(([category, amount]) => ({
-      category,
-      amount,
-      percent: total > 0 ? amount / total : 0
-    }))
-    .sort((a, b) => b.amount - a.amount);
 }
 
 export default function HistoryScreen({ user }) {

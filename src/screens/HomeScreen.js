@@ -17,63 +17,8 @@ import { useNavigation } from "@react-navigation/native";
 import ExpenseItem from "../components/ExpenseItem";
 import { saveMonthlyBudget, subscribeToMonthlyBudget, subscribeToPersonalExpenses } from "../services/firebase";
 import { formatCurrency } from "../utils/currency";
-
-function toExpenseDate(value) {
-  if (!value) {
-    return null;
-  }
-
-  if (typeof value.toDate === "function") {
-    return value.toDate();
-  }
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  if (typeof value.seconds === "number") {
-    return new Date(value.seconds * 1000 + Math.floor((value.nanoseconds ?? 0) / 1000000));
-  }
-
-  return null;
-}
-
-function startOfDay(date) {
-  const nextDate = new Date(date);
-  nextDate.setHours(0, 0, 0, 0);
-  return nextDate;
-}
-
-function startOfMonth(date) {
-  const nextDate = startOfDay(date);
-  nextDate.setDate(1);
-  return nextDate;
-}
-
-function addDays(date, days) {
-  const nextDate = new Date(date);
-  nextDate.setDate(nextDate.getDate() + days);
-  return nextDate;
-}
-
-function addMonths(date, months) {
-  const nextDate = new Date(date);
-  nextDate.setMonth(nextDate.getMonth() + months);
-  return nextDate;
-}
-
-function sumExpensesInRange(expenses, start, end) {
-  return expenses.reduce((total, expense) => {
-    const expenseDate = toExpenseDate(expense.date);
-    const amount = Number(expense.amount);
-
-    if (!expenseDate || Number.isNaN(amount) || expenseDate < start || expenseDate >= end) {
-      return total;
-    }
-
-    return total + amount;
-  }, 0);
-}
+import { addDays, addMonths, startOfDay, startOfMonth } from "../utils/dates";
+import { sumExpensesInRange } from "../utils/expenses";
 
 export default function HomeScreen({ onSignOut, user }) {
   const navigation = useNavigation();

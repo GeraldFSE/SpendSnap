@@ -1,18 +1,6 @@
 import React from "react";
-import { View } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
-
-function polarToCartesian(cx, cy, radius, angleDegrees) {
-  const angle = ((angleDegrees - 90) * Math.PI) / 180;
-  return { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) };
-}
-
-function arcPath(cx, cy, radius, startAngle, endAngle) {
-  const start = polarToCartesian(cx, cy, radius, endAngle);
-  const end = polarToCartesian(cx, cy, radius, startAngle);
-  const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
-  return `M ${cx} ${cy} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 0 ${end.x} ${end.y} Z`;
-}
+import { arcPath, polarToCartesian } from "../utils/pieMath";
 
 // A tappable pie chart. `data` is [{ key, value, color }]; tapping a slice calls
 // onSlicePress(key). The selected slice is pulled out slightly and outlined.
