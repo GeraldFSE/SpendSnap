@@ -1,9 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import ExpenseItem from "../components/ExpenseItem";
-import { subscribeToMonthlyBudget, subscribeToPersonalExpenses } from "../services/firebase";
+import { saveMonthlyBudget, subscribeToMonthlyBudget, subscribeToPersonalExpenses } from "../services/firebase";
 import { formatCurrency } from "../utils/currency";
 
 function toExpenseDate(value) {
@@ -69,6 +81,9 @@ export default function HomeScreen({ onSignOut, user }) {
   const [budget, setBudget] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [budgetModalVisible, setBudgetModalVisible] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
+  const [savingBudget, setSavingBudget] = useState(false);
 
   useEffect(() => {
     // Home is a personal feed of the signed-in user's own expenses, regardless of any
@@ -123,6 +138,32 @@ export default function HomeScreen({ onSignOut, user }) {
     };
   }, [budget, expenses]);
 
+  function openBudgetModal() {
+    const currentAmount = Number(budget?.amount);
+    setBudgetInput(currentAmount > 0 ? String(currentAmount) : "");
+    setBudgetModalVisible(true);
+  }
+
+  async function handleSaveBudget() {
+    const parsedAmount = Number(budgetInput);
+
+    if (!budgetInput.trim() || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      Alert.alert("Invalid budget", "Enter a monthly budget greater than 0.");
+      return;
+    }
+
+    try {
+      setSavingBudget(true);
+      await saveMonthlyBudget(user.uid, parsedAmount);
+      setBudgetModalVisible(false);
+    } catch (error) {
+      console.warn("Unable to save monthly budget.", error);
+      Alert.alert("Save failed", "Check your connection and try again.");
+    } finally {
+      setSavingBudget(false);
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -133,6 +174,7 @@ export default function HomeScreen({ onSignOut, user }) {
   }
 
   return (
+    <>
     <FlatList
       style={styles.container}
       contentContainerStyle={styles.list}
@@ -169,9 +211,26 @@ export default function HomeScreen({ onSignOut, user }) {
                   ? `${Math.round(dashboard.budgetRatio * 100)}% of ${formatCurrency(dashboard.budgetAmount)}`
                   : "No monthly budget set"}
               </Text>
-              <Text style={[styles.budgetStatus, { color: dashboard.budgetColor }]}>
-                {dashboard.budgetRatio >= 1 ? "Exceeded" : dashboard.budgetRatio >= 0.8 ? "Near limit" : "On track"}
-              </Text>
+              {dashboard.budgetAmount > 0 ? (
+                <View style={styles.budgetStatusRow}>
+                  <Text style={[styles.budgetStatus, { color: dashboard.budgetColor }]}>
+                    {dashboard.budgetRatio >= 1 ? "Exceeded" : dashboard.budgetRatio >= 0.8 ? "Near limit" : "On track"}
+                  </Text>
+                  <Pressable
+                    onPress={openBudgetModal}
+                    style={({ pressed }) => [styles.editBudgetButton, pressed ? styles.editBudgetButtonPressed : null]}
+                  >
+                    <Text style={styles.editBudgetText}>Edit</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={openBudgetModal}
+                  style={({ pressed }) => [styles.setBudgetButton, pressed ? styles.setBudgetButtonPressed : null]}
+                >
+                  <Text style={styles.setBudgetText}>Set budget</Text>
+                </Pressable>
+              )}
             </View>
             <View style={styles.progressTrack}>
               <View
@@ -231,6 +290,59 @@ export default function HomeScreen({ onSignOut, user }) {
         </View>
       }
     />
+
+    <Modal
+      animationType="fade"
+      transparent
+      visible={budgetModalVisible}
+      onRequestClose={() => setBudgetModalVisible(false)}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", android: "height" })}
+        style={styles.modalKeyboardView}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setBudgetModalVisible(false)}>
+          <Pressable style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Monthly budget</Text>
+            <Text style={styles.modalLabel}>Budget amount</Text>
+            <TextInput
+              value={budgetInput}
+              onChangeText={setBudgetInput}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+              style={styles.modalInput}
+            />
+
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setBudgetModalVisible(false)}
+                disabled={savingBudget}
+                style={({ pressed }) => [styles.modalSecondaryButton, pressed ? styles.modalButtonPressed : null]}
+              >
+                <Text style={styles.modalSecondaryText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleSaveBudget}
+                disabled={savingBudget}
+                style={({ pressed }) => [
+                  styles.modalPrimaryButton,
+                  pressed && !savingBudget ? styles.modalPrimaryButtonPressed : null,
+                  savingBudget ? styles.modalButtonDisabled : null
+                ]}
+              >
+                {savingBudget ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalPrimaryText}>Save</Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
+    </Modal>
+    </>
   );
 }
 
@@ -348,6 +460,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700"
   },
+  setBudgetButton: {
+    backgroundColor: "#2563EB",
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8
+  },
+  setBudgetButtonPressed: {
+    backgroundColor: "#1D4ED8"
+  },
+  setBudgetText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  budgetStatusRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10
+  },
+  editBudgetButton: {
+    backgroundColor: "#EFF6FF",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6
+  },
+  editBudgetButtonPressed: {
+    backgroundColor: "#DBEAFE"
+  },
+  editBudgetText: {
+    color: "#1D4ED8",
+    fontSize: 13,
+    fontWeight: "800"
+  },
   progressTrack: {
     backgroundColor: "#E2E8F0",
     borderRadius: 999,
@@ -407,5 +552,80 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     marginTop: 4
+  },
+  modalKeyboardView: {
+    flex: 1
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    justifyContent: "center",
+    padding: 16
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    padding: 16
+  },
+  modalTitle: {
+    color: "#0F172A",
+    fontSize: 20,
+    fontWeight: "900"
+  },
+  modalLabel: {
+    color: "#334155",
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 18
+  },
+  modalInput: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#CBD5E1",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#0F172A",
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18
+  },
+  modalSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 8,
+    flex: 1,
+    paddingVertical: 14
+  },
+  modalButtonPressed: {
+    backgroundColor: "#E2E8F0"
+  },
+  modalSecondaryText: {
+    color: "#334155",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  modalPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: "#2563EB",
+    borderRadius: 8,
+    flex: 1,
+    paddingVertical: 14
+  },
+  modalPrimaryButtonPressed: {
+    backgroundColor: "#1D4ED8"
+  },
+  modalButtonDisabled: {
+    opacity: 0.7
+  },
+  modalPrimaryText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800"
   }
 });

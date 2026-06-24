@@ -343,9 +343,9 @@ export function subscribeToGroup(groupId, onGroup, onError) {
   );
 }
 
-// Mirror a membership change across every one of the user's existing expenses so the
-// group sees their full history (on join) and stops seeing it (on leave). Batched in
-// chunks to stay under Firestore's 500-write limit.
+// Strip a group id from every one of the user's existing expenses (used on leave) so
+// their past spending stops counting toward that group. Batched in chunks to stay
+// under Firestore's 500-write limit.
 async function retagExpenseGroup(userId, groupId, operation) {
   const snapshot = await getDocs(getExpensesRef(userId));
 
@@ -358,19 +358,28 @@ async function retagExpenseGroup(userId, groupId, operation) {
   }
 }
 
+// A member's email is stored in the group doc (which members can read) because Auth
+// emails aren't reachable from another user's uid on the client.
+function currentUserEmail() {
+  return auth.currentUser?.email ?? null;
+}
+
 export async function createGroup(userId, name) {
   requireUserId(userId);
   const groupRef = doc(collection(db, "groups"));
+  const email = currentUserEmail();
 
   await setDoc(groupRef, {
     name: name?.trim() || "Shared budget",
     ownerId: userId,
     members: { [userId]: true },
+    memberEmails: email ? { [userId]: email } : {},
     createdAt: serverTimestamp()
   });
 
+  // Only future expenses are tagged into the group (via the live group list passed to
+  // Add Expense), so a new group's spending starts at 0 instead of inheriting history.
   await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayUnion(groupRef.id) }, { merge: true });
-  await retagExpenseGroup(userId, groupRef.id, arrayUnion(groupRef.id));
 
   return groupRef.id;
 }
@@ -386,9 +395,18 @@ export async function joinGroup(userId, groupId) {
   // A merge-set against an existing group only adds the caller's own membership key,
   // which the security rules verify; an unknown/typo'd code fails validation instead
   // of silently creating a bogus group.
-  await setDoc(getGroupRef(trimmedGroupId), { members: { [userId]: true } }, { merge: true });
+  const email = currentUserEmail();
+  await setDoc(
+    getGroupRef(trimmedGroupId),
+    {
+      members: { [userId]: true },
+      ...(email ? { memberEmails: { [userId]: email } } : {})
+    },
+    { merge: true }
+  );
+  // Like create, joining only counts expenses logged from now on; past spending is not
+  // backfilled into the group.
   await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayUnion(trimmedGroupId) }, { merge: true });
-  await retagExpenseGroup(userId, trimmedGroupId, arrayUnion(trimmedGroupId));
 
   return trimmedGroupId;
 }
@@ -400,7 +418,20 @@ export async function leaveGroup(userId, groupId) {
     return;
   }
 
-  await updateDoc(getGroupRef(groupId), { [`members.${userId}`]: deleteField() });
+  await updateDoc(getGroupRef(groupId), {
+    [`members.${userId}`]: deleteField(),
+    [`memberEmails.${userId}`]: deleteField()
+  });
   await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayRemove(groupId) }, { merge: true });
   await retagExpenseGroup(userId, groupId, arrayRemove(groupId));
+}
+
+// Backfills the caller's email into a group they already belong to (groups created
+// before emails were tracked), so existing members show up by email too.
+export async function ensureMemberEmail(groupId, userId, email) {
+  if (!groupId || !userId || !email) {
+    return;
+  }
+
+  await setDoc(getGroupRef(groupId), { memberEmails: { [userId]: email } }, { merge: true });
 }

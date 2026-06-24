@@ -75,8 +75,14 @@ The current app supports manual logging, Firebase persistence, Home Screen Quick
 
 ```bash
 npm install
-npx expo start
+npx expo start --go --clear
 ```
+
+What the start command does:
+
+- `npx expo start` boots the Metro bundler and shows a QR code to open the app.
+- `--go` targets Expo Go directly, so the project opens in the Expo Go client instead of a custom development build.
+- `--clear` wipes the Metro bundler cache before starting. Use it after changing dependencies, `babel.config.js`, or environment variables so stale cached modules don't cause bundling errors.
 
 Home Screen Quick Actions are wired with `expo-quick-actions`, but they require a native development build or EAS build to test fully. Expo Go may not expose that native behavior.
 
@@ -96,7 +102,7 @@ npm install
 Create a `.env` file in the project root using `.env.example`, then start the project:
 
 ```bash
-npx expo start
+npx expo start --go --clear
 ```
 
 Scan the QR code with Expo Go. Evaluators can test:

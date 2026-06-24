@@ -15,6 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import PieChart from "../components/PieChart";
 import {
   createGroup,
+  ensureMemberEmail,
   joinGroup,
   leaveGroup,
   subscribeToGroup,
@@ -25,7 +26,15 @@ import { formatCurrency } from "../utils/currency";
 // Distinct slice colors so each member reads as their own wedge in the pie.
 const USER_COLORS = ["#2563EB", "#0F766E", "#EA580C", "#7C3AED", "#C2410C", "#0891B2", "#DB2777", "#65A30D"];
 
-function memberName(memberId, currentUserId) {
+// Prefer the member's email (stored on the group doc); fall back to a short id for
+// members who joined before emails were tracked or who signed in as a guest.
+function memberName(memberId, group, currentUserId) {
+  const email = group?.memberEmails?.[memberId];
+
+  if (email) {
+    return memberId === currentUserId ? `You (${email})` : email;
+  }
+
   return memberId === currentUserId ? "You" : `Member ${memberId?.slice(0, 6)}`;
 }
 
@@ -79,6 +88,16 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
   }, [groupId]);
 
   useEffect(() => {
+    // Backfill our own email onto groups created before emails were tracked, so other
+    // members can see us by email too.
+    if (group && user.email && group.memberEmails?.[user.uid] !== user.email) {
+      ensureMemberEmail(groupId, user.uid, user.email).catch((error) =>
+        console.warn("Unable to save member email.", error)
+      );
+    }
+  }, [group, groupId, user.uid, user.email]);
+
+  useEffect(() => {
     // Only stream the group's expenses once the card is open, to avoid extra reads.
     if (!expanded) {
       return undefined;
@@ -115,10 +134,10 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
         key: userId,
         value,
         color: colorFor.get(userId) ?? USER_COLORS[0],
-        label: memberName(userId, user.uid)
+        label: memberName(userId, group, user.uid)
       }))
       .sort((a, b) => b.value - a.value);
-  }, [expenses, memberIds, user.uid]);
+  }, [expenses, memberIds, group, user.uid]);
 
   const selectedBreakdown = useMemo(() => {
     if (!selectedUser) {
@@ -173,7 +192,7 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
           >
             {memberIds.map((memberId) => (
               <Text key={memberId} style={styles.memberRow}>
-                {memberName(memberId, user.uid)}
+                {memberName(memberId, group, user.uid)}
               </Text>
             ))}
           </Disclosure>
@@ -229,7 +248,7 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
                 {selectedUser ? (
                   <View style={styles.breakdownPanel}>
                     <Text style={styles.breakdownTitle}>
-                      {memberName(selectedUser, user.uid)} · by category
+                      {memberName(selectedUser, group, user.uid)} · by category
                     </Text>
                     {selectedBreakdown.length === 0 ? (
                       <Text style={styles.mutedText}>No expenses yet.</Text>
