@@ -177,6 +177,34 @@ describe("groups security rules", () => {
     await assertFails(deleteDoc(doc(db("bob"), "groups", gid)));
     await assertSucceeds(deleteDoc(doc(db("alice"), "groups", gid)));
   });
+
+  test("a non-owner member cannot rename the group", async () => {
+    const gid = await createGroup(db("alice"), "alice", "Flat");
+    await joinGroup(db("bob"), "bob", gid);
+
+    await assertFails(updateDoc(doc(db("bob"), "groups", gid), { name: "Hijacked name" }));
+    await assertSucceeds(updateDoc(doc(db("alice"), "groups", gid), { name: "Flat budget" }));
+  });
+
+  test("a member cannot remove another member", async () => {
+    const gid = await createGroup(db("alice"), "alice", "Flat", "alice@example.com");
+    await joinGroup(db("bob"), "bob", gid, "bob@example.com");
+
+    await assertFails(
+      updateDoc(doc(db("bob"), "groups", gid), {
+        "members.alice": deleteField(),
+        "memberEmails.alice": deleteField()
+      })
+    );
+  });
+
+  test("a member cannot edit another member's email label", async () => {
+    const gid = await createGroup(db("alice"), "alice", "Flat", "alice@example.com");
+    await joinGroup(db("bob"), "bob", gid, "bob@example.com");
+
+    await assertFails(updateDoc(doc(db("bob"), "groups", gid), { "memberEmails.alice": "fake@example.com" }));
+    await assertSucceeds(updateDoc(doc(db("bob"), "groups", gid), { "memberEmails.bob": "bob-new@example.com" }));
+  });
 });
 
 describe("expenses security rules", () => {

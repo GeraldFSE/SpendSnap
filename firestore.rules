@@ -16,12 +16,35 @@ service cloud.firestore {
     }
 
     // An invite-code join: the only change to `members` is the caller adding their own
-    // key as `true`, and they weren't already a member. affectedKeys() is direction-
-    // independent, so this avoids the addedKeys()/removedKeys() orientation pitfall.
-    function isSelfJoin(existingMembers, incomingMembers) {
+    // key as `true`, with an optional email label for that same caller. affectedKeys()
+    // is direction-independent, so this avoids the addedKeys()/removedKeys() pitfall.
+    function isSelfJoin(existingMembers, incomingMembers, existingEmails, incomingEmails) {
       return incomingMembers.diff(existingMembers).affectedKeys().hasOnly([request.auth.uid])
         && incomingMembers[request.auth.uid] == true
-        && !(request.auth.uid in existingMembers);
+        && !(request.auth.uid in existingMembers)
+        && incomingEmails.diff(existingEmails).affectedKeys().hasOnly([request.auth.uid])
+        && (!(request.auth.uid in incomingEmails) || incomingEmails[request.auth.uid] is string);
+    }
+
+    // A member may leave by removing only their own membership/email keys.
+    function isSelfLeave(existingMembers, incomingMembers, existingEmails, incomingEmails) {
+      return request.auth.uid in existingMembers
+        && incomingMembers.diff(existingMembers).affectedKeys().hasOnly([request.auth.uid])
+        && !(request.auth.uid in incomingMembers)
+        && incomingEmails.diff(existingEmails).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    // Existing members may backfill/update only their own display email.
+    function isOwnEmailUpdate(existingMembers, existingEmails, incomingEmails) {
+      return request.auth.uid in existingMembers
+        && incomingEmails.diff(existingEmails).affectedKeys().hasOnly([request.auth.uid])
+        && incomingEmails[request.auth.uid] is string;
+    }
+
+    function isOwnerRename() {
+      return request.auth.uid == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.name is string;
     }
 
     // Membership lookup table for shared budgets. Members is a map of uid -> true
@@ -38,8 +61,33 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && request.resource.data.ownerId == resource.data.ownerId
         && (
-          request.auth.uid in resource.data.members
-          || isSelfJoin(resource.data.members, request.resource.data.members)
+          isOwnerRename()
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberEmails'])
+            && isSelfJoin(
+              resource.data.members,
+              request.resource.data.members,
+              resource.data.get('memberEmails', {}),
+              request.resource.data.get('memberEmails', {})
+            )
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberEmails'])
+            && isSelfLeave(
+              resource.data.members,
+              request.resource.data.members,
+              resource.data.get('memberEmails', {}),
+              request.resource.data.get('memberEmails', {})
+            )
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberEmails'])
+            && isOwnEmailUpdate(
+              resource.data.members,
+              resource.data.get('memberEmails', {}),
+              request.resource.data.get('memberEmails', {})
+            )
+          )
         );
 
       allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;

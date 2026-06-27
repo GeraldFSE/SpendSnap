@@ -8,7 +8,7 @@ SpendSnap helps people log expenses in a few taps, understand where their money 
 ![Expo SDK](https://img.shields.io/badge/Expo%20SDK-54-000020)
 ![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-FFCA28)
-![Tests](https://img.shields.io/badge/tests-93%20passing-16A34A)
+![Tests](https://img.shields.io/badge/tests-96%20passing-16A34A)
 ![License](https://img.shields.io/badge/license-not%20set-lightgrey)
 
 ---
@@ -104,7 +104,7 @@ SpendSnap targets each of these:
 
 ### Planned / placeholder
 
-- **Automatic SMS parsing** — `src/services/openai.js` contains a stub (`parseBankSmsAlert`) for an AI-assisted parser that would extract amount/merchant/category from bank SMS alerts. It is intentionally a no-op placeholder; in production the OpenAI key must live behind a server, not in the client bundle.
+- **Automatic SMS parsing (Milestone 3)** — `src/services/openai.js` contains a stub (`parseBankSmsAlert`) for an AI-assisted parser that would extract amount/merchant/category from bank SMS alerts. It is intentionally a no-op placeholder; in production the OpenAI key must live behind a server, not in the client bundle.
 
 ---
 
@@ -486,7 +486,7 @@ These rules are validated by the emulator-backed system tests in `system-tests/`
 - **Expo Go** app on a physical iOS/Android device, *or* an iOS Simulator / Android Emulator.
 - A **Firebase project** with **Authentication** (Email/Password + Anonymous enabled) and **Cloud Firestore** provisioned.
 - **firebase-tools** (the Firebase CLI) — required only for deploying rules/indexes and for running the system tests against the emulator. Install with `npm i -g firebase-tools`.
-- A JDK is required by the Firestore Emulator (the CLI will prompt if missing).
+- **JDK 21 or newer** for the Firestore Emulator used by `npm run test:system`. Recent `firebase-tools` versions no longer support older Java runtimes.
 
 ---
 
@@ -565,13 +565,13 @@ If Expo hangs on start, confirm your Node version is an LTS release (20 or 22).
 
 ## 14. Testing
 
-SpendSnap ships with **93 automated tests** across three categories, reflecting a deliberate testing pyramid: many fast unit tests, a layer of component tests, and a focused set of system tests.
+SpendSnap ships with **96 automated tests** across three categories, reflecting a deliberate testing pyramid: many fast unit tests, a layer of component tests, and a focused set of system tests.
 
 | Suite | Runner | What it covers | Count |
 | --- | --- | --- | --- |
 | **Unit** | Jest (node) | Pure logic in `utils/`: currency, dates, expenses, budget, pie geometry | 58 |
 | **Component** | Jest + RNTL | `ExpenseItem`, `PieChart`, `HomeScreen` (service + navigation mocked) | 15 |
-| **System** | `node:test` + Firestore Emulator | Security rules and data-model behaviour end-to-end | 20 |
+| **System** | `node:test` + Firestore Emulator | Security rules and data-model behaviour end-to-end | 23 |
 
 ### Commands
 
@@ -603,7 +603,7 @@ npm run test:all
 - **Component tests** render presentational components with props, or render screens with the **service layer mocked**, so they never hit the network.
 - **System tests** exercise the *real* rules and query shapes against an emulator, giving confidence that the server tier behaves as designed.
 
-> Note: the Firestore Emulator requires a JDK. The first `test:system` run downloads the emulator jar. A benign `watchman` recrawl warning may print before Jest runs; it does not affect results.
+> Note: the Firestore Emulator requires **JDK 21+**. The first `test:system` run downloads the emulator jar and writes `firestore-debug.log`, which is generated local output and should not be committed. A benign `watchman` recrawl warning may print before Jest runs; it does not affect results.
 
 ---
 
@@ -690,7 +690,7 @@ There is no CI pipeline committed yet. A natural setup (see [Roadmap](#17-roadma
 
 ### Roadmap
 
-- **Automatic SMS parsing** with an AI-assisted extractor (`openai.js` stub today). Must be fronted by a server/Cloud Function so the API key is never shipped.
+- **Milestone 3: Automatic SMS parsing** with an AI-assisted extractor (`openai.js` stub today). Must be fronted by a server/Cloud Function so the API key is never shipped.
 - **CSV / data export** of expenses and summaries.
 - **Recurring expenses** and per-category budgets.
 - **CI pipeline** (lint + unit/component + emulator system tests on every PR).
