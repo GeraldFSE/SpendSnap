@@ -19,7 +19,8 @@ service cloud.firestore {
     // key as `true`, with an optional email label for that same caller. affectedKeys()
     // is direction-independent, so this avoids the addedKeys()/removedKeys() pitfall.
     function isSelfJoin(existingMembers, incomingMembers, existingEmails, incomingEmails) {
-      return incomingMembers.diff(existingMembers).affectedKeys().hasOnly([request.auth.uid])
+      return resource.data.get('archived', false) != true
+        && incomingMembers.diff(existingMembers).affectedKeys().hasOnly([request.auth.uid])
         && incomingMembers[request.auth.uid] == true
         && !(request.auth.uid in existingMembers)
         && incomingEmails.diff(existingEmails).affectedKeys().hasOnly([request.auth.uid])
@@ -47,6 +48,12 @@ service cloud.firestore {
         && request.resource.data.name is string;
     }
 
+    function isOwnerArchive() {
+      return request.auth.uid == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived', 'archivedAt'])
+        && request.resource.data.archived == true;
+    }
+
     // Membership lookup table for shared budgets. Members is a map of uid -> true
     // so rules can check membership without reading an array.
     match /groups/{groupId} {
@@ -62,6 +69,7 @@ service cloud.firestore {
         && request.resource.data.ownerId == resource.data.ownerId
         && (
           isOwnerRename()
+          || isOwnerArchive()
           || (
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberEmails'])
             && isSelfJoin(

@@ -68,6 +68,9 @@ function BudgetProgressCard({ budget, errorMessage, loading, monthlySpent, onEdi
           </View>
 
           <Text style={[styles.budgetDetail, { color: budgetState.color }]}>{budgetState.detail}</Text>
+          {budgetState.hasBudget ? (
+            <Text style={styles.budgetHint}>Alerts fire once per month at 80% and 100%.</Text>
+          ) : null}
         </>
       )}
 
@@ -444,6 +447,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     marginTop: 10
+  },
+  budgetHint: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 6
   },
   budgetErrorText: {
     color: "#991B1B",

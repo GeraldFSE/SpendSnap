@@ -29,8 +29,8 @@ export default function AppNavigator({ onSignOut, user }) {
   const [groupIds, setGroupIds] = useState([]);
 
   useEffect(() => {
-    // Resolves the user's group memberships once here so new expenses get mirrored into
-    // every group and the Group tab knows which groups to render.
+    // Resolves the user's group memberships once here so Add Expense can offer active
+    // shared destinations and the Group tab knows which groups to render.
     const unsubscribe = subscribeToUserGroups(
       user.uid,
       (ids) => setGroupIds(ids),

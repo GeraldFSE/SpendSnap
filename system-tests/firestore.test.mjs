@@ -186,6 +186,21 @@ describe("groups security rules", () => {
     await assertSucceeds(updateDoc(doc(db("alice"), "groups", gid), { name: "Flat budget" }));
   });
 
+  test("only the owner can archive the group", async () => {
+    const gid = await createGroup(db("alice"), "alice", "Flat");
+    await joinGroup(db("bob"), "bob", gid);
+
+    await assertFails(updateDoc(doc(db("bob"), "groups", gid), { archived: true, archivedAt: serverTimestamp() }));
+    await assertSucceeds(updateDoc(doc(db("alice"), "groups", gid), { archived: true, archivedAt: serverTimestamp() }));
+  });
+
+  test("an archived group cannot be joined with its invite code", async () => {
+    const gid = await createGroup(db("alice"), "alice", "Flat");
+    await updateDoc(doc(db("alice"), "groups", gid), { archived: true, archivedAt: serverTimestamp() });
+
+    await assertFails(joinGroup(db("bob"), "bob", gid));
+  });
+
   test("a member cannot remove another member", async () => {
     const gid = await createGroup(db("alice"), "alice", "Flat", "alice@example.com");
     await joinGroup(db("bob"), "bob", gid, "bob@example.com");
@@ -292,14 +307,14 @@ describe("data model behavior", () => {
     const before = await getDocs(groupQuery(db("alice"), gid));
     assert.equal(before.size, 0);
 
-    // A new expense logged while in the group is mirrored in.
+    // A new expense explicitly tagged into the group appears there.
     await saveExpense(db("alice"), "alice", { amount: 30, groupIds: [gid] });
     const after = await getDocs(groupQuery(db("alice"), gid));
     assert.equal(after.size, 1);
     assert.equal(after.docs[0].data().amount, 30);
   });
 
-  test("an expense is mirrored into every group the author belongs to", async () => {
+  test("an expense can be tagged into multiple selected groups", async () => {
     const g1 = await createGroup(db("alice"), "alice", "Flat");
     const g2 = await createGroup(db("alice"), "alice", "Trip");
     await saveExpense(db("alice"), "alice", { amount: 40, groupIds: [g1, g2] });

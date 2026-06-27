@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -14,10 +15,12 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import PieChart from "../components/PieChart";
 import {
+  archiveGroup,
   createGroup,
   ensureMemberEmail,
   joinGroup,
   leaveGroup,
+  renameGroup,
   subscribeToGroup,
   subscribeToGroupExpenses
 } from "../services/firebase";
@@ -68,7 +71,7 @@ function Disclosure({ icon, title, open, onToggle, children }) {
   );
 }
 
-function GroupCard({ groupId, user, onLeave, leaving }) {
+function GroupCard({ groupId, user, onArchivedChange, onLeave, leaving }) {
   const [group, setGroup] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
@@ -77,15 +80,22 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
   const [showMembers, setShowMembers] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(true);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [renameInput, setRenameInput] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeToGroup(
       groupId,
-      (item) => setGroup(item),
+      (item) => {
+        setGroup(item);
+        onArchivedChange?.(groupId, Boolean(item?.archived));
+      },
       (error) => console.warn("Unable to load group.", error)
     );
     return unsubscribe;
-  }, [groupId]);
+  }, [groupId, onArchivedChange]);
 
   useEffect(() => {
     // Backfill our own email onto groups created before emails were tracked, so other
@@ -157,6 +167,58 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
   function handleSlicePress(userId) {
     setSelectedUser((current) => (current === userId ? null : userId));
   }
+
+  function openRenameModal() {
+    setRenameInput(group?.name ?? "Shared budget");
+    setRenameModalVisible(true);
+  }
+
+  async function handleRenameGroup() {
+    if (!renameInput.trim()) {
+      Alert.alert("Group name required", "Enter a name for your shared budget.");
+      return;
+    }
+
+    try {
+      setRenaming(true);
+      await renameGroup(user.uid, groupId, renameInput);
+      setRenameModalVisible(false);
+    } catch (error) {
+      console.warn("Unable to rename group.", error);
+      Alert.alert("Rename failed", "Only the group owner can rename it.");
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  function confirmArchiveGroup() {
+    Alert.alert(
+      "Archive group?",
+      "This hides the group from active Shared Snaps for all members. Personal expenses stay in each person's history.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Archive", style: "destructive", onPress: handleArchiveGroup }
+      ]
+    );
+  }
+
+  async function handleArchiveGroup() {
+    try {
+      setArchiving(true);
+      await archiveGroup(user.uid, groupId);
+    } catch (error) {
+      console.warn("Unable to archive group.", error);
+      Alert.alert("Archive failed", "Only the group owner can archive it.");
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  if (group?.archived) {
+    return null;
+  }
+
+  const isOwner = group?.ownerId === user.uid;
 
   return (
     <View style={styles.card}>
@@ -248,7 +310,7 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
                 {selectedUser ? (
                   <View style={styles.breakdownPanel}>
                     <Text style={styles.breakdownTitle}>
-                      {memberName(selectedUser, group, user.uid)} · by category
+                      {memberName(selectedUser, group, user.uid)} - by category
                     </Text>
                     {selectedBreakdown.length === 0 ? (
                       <Text style={styles.mutedText}>No expenses yet.</Text>
@@ -271,6 +333,39 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
             <Text style={styles.totalValue}>{formatCurrency(groupTotal)}</Text>
           </View>
 
+          {isOwner ? (
+            <View style={styles.ownerActions}>
+              <Pressable
+                onPress={openRenameModal}
+                disabled={renaming || archiving}
+                style={({ pressed }) => [
+                  styles.ownerButton,
+                  pressed && !renaming && !archiving ? styles.ownerButtonPressed : null
+                ]}
+              >
+                <Ionicons name="pencil-outline" size={16} color="#1D4ED8" />
+                <Text style={styles.ownerButtonText}>Rename</Text>
+              </Pressable>
+              <Pressable
+                onPress={confirmArchiveGroup}
+                disabled={renaming || archiving}
+                style={({ pressed }) => [
+                  styles.archiveButton,
+                  pressed && !renaming && !archiving ? styles.archiveButtonPressed : null
+                ]}
+              >
+                {archiving ? (
+                  <ActivityIndicator color="#991B1B" />
+                ) : (
+                  <>
+                    <Ionicons name="archive-outline" size={16} color="#991B1B" />
+                    <Text style={styles.archiveButtonText}>Archive</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+
           <Pressable
             onPress={() => onLeave(groupId, group?.name)}
             disabled={leaving}
@@ -288,6 +383,54 @@ function GroupCard({ groupId, user, onLeave, leaving }) {
           </Pressable>
         </View>
       ) : null}
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={renameModalVisible}
+        onRequestClose={() => setRenameModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.select({ ios: "padding", android: "height" })}
+          style={styles.modalKeyboardView}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setRenameModalVisible(false)}>
+            <Pressable style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Rename group</Text>
+              <TextInput
+                value={renameInput}
+                onChangeText={setRenameInput}
+                placeholder="Group name"
+                style={styles.input}
+              />
+              <View style={styles.modalActions}>
+                <Pressable
+                  onPress={() => setRenameModalVisible(false)}
+                  disabled={renaming}
+                  style={({ pressed }) => [styles.modalSecondaryButton, pressed ? styles.modalButtonPressed : null]}
+                >
+                  <Text style={styles.modalSecondaryText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleRenameGroup}
+                  disabled={renaming}
+                  style={({ pressed }) => [
+                    styles.modalPrimaryButton,
+                    pressed && !renaming ? styles.primaryButtonPressed : null,
+                    renaming ? styles.buttonDisabled : null
+                  ]}
+                >
+                  {renaming ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.modalPrimaryText}>Save</Text>
+                  )}
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -298,8 +441,20 @@ export default function GroupScreen({ user, groupIds }) {
   const [joinCode, setJoinCode] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [leavingId, setLeavingId] = useState("");
+  const [archivedGroups, setArchivedGroups] = useState({});
 
   const groups = Array.isArray(groupIds) ? groupIds : [];
+  const activeGroupCount = groups.filter((groupId) => archivedGroups[groupId] !== true).length;
+
+  const handleArchivedChange = useCallback((groupId, archived) => {
+    setArchivedGroups((current) => {
+      if (current[groupId] === archived) {
+        return current;
+      }
+
+      return { ...current, [groupId]: archived };
+    });
+  }, []);
 
   async function handleCreateGroup() {
     if (!groupName.trim()) {
@@ -333,7 +488,7 @@ export default function GroupScreen({ user, groupIds }) {
       setJoinCode("");
     } catch (error) {
       console.warn("Unable to join group.", error);
-      setErrorMessage("Unable to join that group. Double-check the code and try again.");
+      setErrorMessage("Unable to join that group. The code may be invalid, archived, or unavailable.");
     } finally {
       setBusyAction("");
     }
@@ -342,7 +497,7 @@ export default function GroupScreen({ user, groupIds }) {
   function confirmLeaveGroup(groupId, name) {
     Alert.alert(
       "Leave group?",
-      `Your expenses will stop showing in ${name || "this group"}. You can rejoin with the invite code.`,
+      `Your past expenses will be removed from ${name || "this group"}, but they will stay in your personal history. You can rejoin later with the invite code.`,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Leave", style: "destructive", onPress: () => handleLeaveGroup(groupId) }
@@ -370,14 +525,15 @@ export default function GroupScreen({ user, groupIds }) {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-        {groups.length > 0 ? (
+        {activeGroupCount > 0 ? (
           <>
-            <Text style={styles.sectionLabel}>Your groups ({groups.length})</Text>
+            <Text style={styles.sectionLabel}>Your groups ({activeGroupCount})</Text>
             {groups.map((groupId) => (
               <GroupCard
                 key={groupId}
                 groupId={groupId}
                 user={user}
+                onArchivedChange={handleArchivedChange}
                 onLeave={confirmLeaveGroup}
                 leaving={leavingId === groupId}
               />
@@ -728,8 +884,99 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800"
   },
+  ownerActions: {
+    flexDirection: "row",
+    gap: 10
+  },
+  ownerButton: {
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    borderRadius: 8,
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    paddingVertical: 12
+  },
+  ownerButtonPressed: {
+    backgroundColor: "#DBEAFE"
+  },
+  ownerButtonText: {
+    color: "#1D4ED8",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  archiveButton: {
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    borderRadius: 8,
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+    justifyContent: "center",
+    paddingVertical: 12
+  },
+  archiveButtonPressed: {
+    backgroundColor: "#FECACA"
+  },
+  archiveButtonText: {
+    color: "#991B1B",
+    fontSize: 15,
+    fontWeight: "800"
+  },
   buttonDisabled: {
     opacity: 0.7
+  },
+  modalKeyboardView: {
+    flex: 1
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    justifyContent: "center",
+    padding: 16
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    padding: 16
+  },
+  modalTitle: {
+    color: "#0F172A",
+    fontSize: 20,
+    fontWeight: "900"
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18
+  },
+  modalSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    borderRadius: 8,
+    flex: 1,
+    paddingVertical: 14
+  },
+  modalButtonPressed: {
+    backgroundColor: "#E2E8F0"
+  },
+  modalSecondaryText: {
+    color: "#334155",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  modalPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: "#2563EB",
+    borderRadius: 8,
+    flex: 1,
+    paddingVertical: 14
+  },
+  modalPrimaryText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "800"
   },
   emptyState: {
     alignItems: "center",

@@ -129,8 +129,8 @@ export async function saveExpense(userId, { amount, category, notes, groupIds })
     notes: notes?.trim() ?? "",
     date: serverTimestamp(),
     userId,
-    // An expense belongs to its author and is mirrored into every group they're in,
-    // so group members see each other's spending. Empty when the user is solo.
+    // Every expense stays in the author's personal history; selected group ids make it
+    // visible in those shared budgets too. Empty means personal-only.
     groupIds: Array.isArray(groupIds) ? groupIds : []
   });
 
@@ -170,7 +170,7 @@ export function subscribeToPersonalExpenses(userId, onExpenses, onError) {
 
 export function subscribeToGroupExpenses(groupId, onExpenses, onError) {
   // Collection-group query spans every member's "expenses" subcollection, surfacing all
-  // spending mirrored into this group (each member's docs carry the group id in groupIds).
+  // spending tagged into this group (each member's docs carry the group id in groupIds).
   const groupQuery = query(
     collectionGroup(db, "expenses"),
     where("groupIds", "array-contains", groupId),
@@ -404,8 +404,8 @@ export async function joinGroup(userId, groupId) {
     },
     { merge: true }
   );
-  // Like create, joining only counts expenses logged from now on; past spending is not
-  // backfilled into the group.
+  // Like create, joining only affects expenses explicitly tagged into the group from
+  // now on; past spending is not backfilled into the group.
   await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayUnion(trimmedGroupId) }, { merge: true });
 
   return trimmedGroupId;
@@ -424,6 +424,30 @@ export async function leaveGroup(userId, groupId) {
   });
   await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayRemove(groupId) }, { merge: true });
   await retagExpenseGroup(userId, groupId, arrayRemove(groupId));
+}
+
+export async function renameGroup(userId, groupId, name) {
+  requireUserId(userId);
+  const trimmedName = name?.trim();
+
+  if (!trimmedName) {
+    throw new Error("Enter a group name.");
+  }
+
+  await updateDoc(getGroupRef(groupId), { name: trimmedName });
+}
+
+export async function archiveGroup(userId, groupId) {
+  requireUserId(userId);
+
+  if (!groupId) {
+    throw new Error("A group ID is required.");
+  }
+
+  await updateDoc(getGroupRef(groupId), {
+    archived: true,
+    archivedAt: serverTimestamp()
+  });
 }
 
 // Backfills the caller's email into a group they already belong to (groups created

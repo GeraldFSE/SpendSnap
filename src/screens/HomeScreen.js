@@ -188,6 +188,9 @@ export default function HomeScreen({ onSignOut, user }) {
                 ]}
               />
             </View>
+            {dashboard.budgetAmount > 0 ? (
+              <Text style={styles.budgetHint}>Alerts fire once per month at 80% and 100%.</Text>
+            ) : null}
           </View>
 
           <View style={styles.metricRow}>
@@ -448,6 +451,12 @@ const styles = StyleSheet.create({
   progressFill: {
     borderRadius: 999,
     height: "100%"
+  },
+  budgetHint: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 8
   },
   metricRow: {
     flexDirection: "row",

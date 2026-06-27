@@ -8,7 +8,7 @@ SpendSnap helps people log expenses in a few taps, understand where their money 
 ![Expo SDK](https://img.shields.io/badge/Expo%20SDK-54-000020)
 ![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-FFCA28)
-![Tests](https://img.shields.io/badge/tests-96%20passing-16A34A)
+![Tests](https://img.shields.io/badge/tests-98%20passing-16A34A)
 ![License](https://img.shields.io/badge/license-not%20set-lightgrey)
 
 ---
@@ -91,13 +91,13 @@ SpendSnap targets each of these:
 ### Implemented
 
 - **Authentication** — email/password sign-up and sign-in, plus anonymous ("guest") sign-in, backed by Firebase Auth with persistence across app restarts (AsyncStorage).
-- **Manual expense logging** — amount, category (Food, Transport, Shopping, Bills, Others), and optional notes.
+- **Manual expense logging** — amount, category (Food, Transport, Shopping, Bills, Others), optional notes, and an optional group destination.
 - **Home dashboard** — month-to-date total, today's spend, transaction count, an at-a-glance budget progress bar, quick navigation actions, and the three most recent expenses.
 - **Set / edit monthly budget from anywhere** — a modal on both the Home and Summary tabs; the budget syncs live across the app.
 - **Budget alerts** — local notifications fire automatically the first time you cross 80% and 100% of your monthly budget within a calendar month (de-duplicated per month).
 - **Spending summaries** — daily (7-day), weekly (6-week), and monthly (6-month) bar charts with totals, current-period figure, average, and peak.
 - **Expense history** — full chronological list with **Today / This Week / This Month / All Time** filters, a category breakdown bar chart, and swipe-free **long-press-to-delete**.
-- **Shared groups (multi-group)** — create or join any number of groups via an invite code; each group is a collapsible card containing nested dropdowns for the invite code, members (shown by **email**), and an **interactive pie chart of spending per member**. Tapping a member's slice drills into that member's category breakdown. Each group shows its running total.
+- **Shared groups (multi-group)** — create or join any number of groups via an invite code; each group is a collapsible card containing nested dropdowns for the invite code, members (shown by **email**), and an **interactive pie chart of spending per member**. Tapping a member's slice drills into that member's category breakdown. Each group shows its running total. Owners can rename or archive their groups.
 - **Singapore Dollar (SGD)** currency formatting throughout, centralised in one utility.
 - **Home Screen Quick Actions** — long-press the app icon to log an expense (requires a development/EAS build; gracefully degrades in Expo Go).
 - **Tab navigation** with Ionicons (filled when active, outline when inactive).
@@ -335,8 +335,8 @@ Because these rules *are* logic, they are tested like logic: the [system test su
 **1. Personal views are physically separate from group views.**
 Home, Summary, and History read the user's **own** `expenses` subcollection (`subscribeToPersonalExpenses`). Group views read a **collection-group** query filtered by `groupIds` (`subscribeToGroupExpenses`). This guarantees that creating, joining, or leaving a group can never make a user's personal history "disappear" — the two pipelines are independent.
 
-**2. An expense is "mirrored" into groups via a `groupIds` array, tagged at creation.**
-Rather than duplicating expense documents per group, each expense carries a `groupIds: string[]`. A group's spending is "every expense whose `groupIds` contains this group id." This:
+**2. An expense is shared to selected groups via a `groupIds` array, tagged at creation.**
+Rather than duplicating expense documents per group, each expense carries a `groupIds: string[]`. A group's spending is "every expense whose `groupIds` contains this group id." Users choose whether a new expense is personal-only or shared to one or more active groups. This:
 - enables a single indexed `array-contains` query per group, and
 - enables the efficient `hasAny` authorization rule.
 
@@ -362,7 +362,7 @@ users/{userId}
   │     notes:     string          // may be ""
   │     date:      timestamp       // serverTimestamp() at creation
   │     userId:    string          // == {userId}, used by collection-group reads
-  │     groupIds:  string[]        // groups this expense is mirrored into ([] when solo)
+  │     groupIds:  string[]        // selected groups this expense appears in ([] when personal-only)
   │
   └── settings/{settingId}
         monthlyBudget:
@@ -380,7 +380,9 @@ users/{userId}
 
 groups/{groupId}
     name:         string
-    ownerId:      string                 // creator; only they can delete
+    ownerId:      string                 // creator; can rename/archive/delete
+    archived:     boolean                // optional; archived groups are hidden from active UI
+    archivedAt:   timestamp              // optional
     members:      { [uid: string]: true } // membership set as a map
     memberEmails: { [uid: string]: string } // denormalised for display
     createdAt:    timestamp
@@ -453,7 +455,12 @@ groups/{groupId}
   get:    signed-in AND caller ∈ members
   list:   denied (groups are reached by known id, not discovered)
   create: caller is ownerId AND caller ∈ members
-  update: ownerId unchanged AND (caller is a member  OR  it's a valid self-join)
+  update: ownerId unchanged AND one of:
+          - owner renames the group
+          - owner archives the group
+          - caller self-joins
+          - caller self-leaves
+          - caller updates only their own email label
   delete: caller is ownerId
 
 users/{userId}/expenses/{expenseId}
@@ -565,13 +572,13 @@ If Expo hangs on start, confirm your Node version is an LTS release (20 or 22).
 
 ## 14. Testing
 
-SpendSnap ships with **96 automated tests** across three categories, reflecting a deliberate testing pyramid: many fast unit tests, a layer of component tests, and a focused set of system tests.
+SpendSnap ships with **98 automated tests** across three categories, reflecting a deliberate testing pyramid: many fast unit tests, a layer of component tests, and a focused set of system tests.
 
 | Suite | Runner | What it covers | Count |
 | --- | --- | --- | --- |
 | **Unit** | Jest (node) | Pure logic in `utils/`: currency, dates, expenses, budget, pie geometry | 58 |
 | **Component** | Jest + RNTL | `ExpenseItem`, `PieChart`, `HomeScreen` (service + navigation mocked) | 15 |
-| **System** | `node:test` + Firestore Emulator | Security rules and data-model behaviour end-to-end | 23 |
+| **System** | `node:test` + Firestore Emulator | Security rules and data-model behaviour end-to-end | 25 |
 
 ### Commands
 
@@ -590,11 +597,11 @@ npm run test:all
 ### What the system tests assert (examples)
 
 - Non-members cannot read a group; members can.
-- Listing all groups is denied; invite-code self-join works; a joiner cannot hijack `ownerId` or add someone else.
+- Listing all groups is denied; invite-code self-join works; archived groups reject joins; a joiner cannot hijack `ownerId` or add someone else.
 - A user can only read/write their own expenses and settings.
 - Group members can read each other's group-tagged expenses; outsiders cannot.
 - **A newly created group starts at 0** and only counts expenses logged afterwards.
-- An expense is mirrored into every group its author belongs to.
+- An expense can be shared into selected groups through its `groupIds` tags.
 - Leaving a group removes the member's contributions and email from it.
 
 ### Why testing is easy here (architecture pays off)
