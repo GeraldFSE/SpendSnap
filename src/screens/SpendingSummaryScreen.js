@@ -12,301 +12,13 @@ import {
   TextInput,
   View
 } from "react-native";
-import { saveMonthlyBudget, subscribeToExpenses, subscribeToMonthlyBudget } from "../services/firebase";
+import { saveMonthlyBudget, subscribeToPersonalExpenses, subscribeToMonthlyBudget } from "../services/firebase";
+import { formatCurrency, formatCompactCurrency } from "../utils/currency";
+import { PERIODS, summarizeCurrentMonth, summarizeExpenses } from "../utils/expenses";
+import { getBudgetState } from "../utils/budget";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const CHART_HEIGHT = 148;
-
-const PERIODS = [
-  { key: "daily", label: "Daily", count: 7 },
-  { key: "weekly", label: "Weekly", count: 6 },
-  { key: "monthly", label: "Monthly", count: 6 }
-];
-
 const BAR_COLORS = ["#2563EB", "#0F766E", "#EA580C", "#7C3AED", "#C2410C", "#0891B2"];
-const BUDGET_COLORS = {
-  onTrack: "#16A34A",
-  warning: "#D97706",
-  exceeded: "#DC2626"
-};
-
-const currencyFormatter = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 2
-});
-
-const compactCurrencyFormatter = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "USD",
-  notation: "compact",
-  maximumFractionDigits: 1
-});
-
-const dayLabelFormatter = new Intl.DateTimeFormat(undefined, {
-  weekday: "short",
-  day: "numeric"
-});
-
-const dateLabelFormatter = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric"
-});
-
-const monthLabelFormatter = new Intl.DateTimeFormat(undefined, {
-  month: "short"
-});
-
-function formatCurrency(value) {
-  return currencyFormatter.format(Number(value) || 0);
-}
-
-function formatCompactCurrency(value) {
-  const amount = Number(value) || 0;
-
-  if (amount === 0) {
-    return "$0";
-  }
-
-  return compactCurrencyFormatter.format(amount);
-}
-
-function toExpenseDate(value) {
-  if (!value) {
-    return null;
-  }
-
-  if (typeof value.toDate === "function") {
-    return value.toDate();
-  }
-
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  if (typeof value.seconds === "number") {
-    return new Date(value.seconds * 1000 + Math.floor((value.nanoseconds ?? 0) / 1000000));
-  }
-
-  if (typeof value === "string" || typeof value === "number") {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  return null;
-}
-
-function startOfDay(date) {
-  const nextDate = new Date(date);
-  nextDate.setHours(0, 0, 0, 0);
-  return nextDate;
-}
-
-function startOfWeek(date) {
-  const nextDate = startOfDay(date);
-  const dayOffset = (nextDate.getDay() + 6) % 7;
-  nextDate.setDate(nextDate.getDate() - dayOffset);
-  return nextDate;
-}
-
-function startOfMonth(date) {
-  const nextDate = startOfDay(date);
-  nextDate.setDate(1);
-  return nextDate;
-}
-
-function addDays(date, days) {
-  return new Date(date.getTime() + days * DAY_MS);
-}
-
-function addWeeks(date, weeks) {
-  return addDays(date, weeks * 7);
-}
-
-function addMonths(date, months) {
-  const nextDate = new Date(date);
-  nextDate.setMonth(nextDate.getMonth() + months);
-  return nextDate;
-}
-
-function dayKey(date) {
-  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
-}
-
-function weekKey(date) {
-  return dayKey(startOfWeek(date));
-}
-
-function monthKey(date) {
-  return `${date.getFullYear()}-${date.getMonth() + 1}`;
-}
-
-function getRangeKey(date, period) {
-  if (period === "weekly") {
-    return weekKey(date);
-  }
-
-  if (period === "monthly") {
-    return monthKey(date);
-  }
-
-  return dayKey(date);
-}
-
-function getPeriodStart(date, period) {
-  if (period === "weekly") {
-    return startOfWeek(date);
-  }
-
-  if (period === "monthly") {
-    return startOfMonth(date);
-  }
-
-  return startOfDay(date);
-}
-
-function getPeriodLabel(date, period) {
-  if (period === "weekly") {
-    return dateLabelFormatter.format(date);
-  }
-
-  if (period === "monthly") {
-    return monthLabelFormatter.format(date);
-  }
-
-  return dayLabelFormatter.format(date);
-}
-
-function buildRanges(period) {
-  const count = PERIODS.find((item) => item.key === period)?.count ?? 6;
-  const currentStart = getPeriodStart(new Date(), period);
-
-  return Array.from({ length: count }, (_, index) => {
-    const distanceFromCurrent = count - index - 1;
-    let date = addDays(currentStart, -distanceFromCurrent);
-
-    if (period === "weekly") {
-      date = addWeeks(currentStart, -distanceFromCurrent);
-    }
-
-    if (period === "monthly") {
-      date = addMonths(currentStart, -distanceFromCurrent);
-    }
-
-    return {
-      key: getRangeKey(date, period),
-      label: getPeriodLabel(date, period),
-      total: 0
-    };
-  });
-}
-
-function summarizeExpenses(expenses, period) {
-  const ranges = buildRanges(period);
-  const totalsByKey = ranges.reduce((totals, range) => {
-    totals[range.key] = 0;
-    return totals;
-  }, {});
-
-  expenses.forEach((expense) => {
-    const expenseDate = toExpenseDate(expense.date);
-    const amount = Number(expense.amount);
-
-    if (!expenseDate || Number.isNaN(amount)) {
-      return;
-    }
-
-    const key = getRangeKey(expenseDate, period);
-
-    if (Object.prototype.hasOwnProperty.call(totalsByKey, key)) {
-      totalsByKey[key] += amount;
-    }
-  });
-
-  const data = ranges.map((range) => ({
-    ...range,
-    total: totalsByKey[range.key]
-  }));
-  const total = data.reduce((sum, item) => sum + item.total, 0);
-  const maxValue = Math.max(...data.map((item) => item.total), 0);
-  const activeTotal = data[data.length - 1]?.total ?? 0;
-  const average = data.length > 0 ? total / data.length : 0;
-
-  return {
-    data,
-    total,
-    maxValue,
-    activeTotal,
-    average
-  };
-}
-
-function summarizeCurrentMonth(expenses) {
-  const start = startOfMonth(new Date());
-  const end = addMonths(start, 1);
-
-  return expenses.reduce((total, expense) => {
-    const expenseDate = toExpenseDate(expense.date);
-    const amount = Number(expense.amount);
-
-    if (!expenseDate || Number.isNaN(amount) || expenseDate < start || expenseDate >= end) {
-      return total;
-    }
-
-    return total + amount;
-  }, 0);
-}
-
-function getBudgetState(budget, monthlySpent) {
-  const budgetAmount = Number(budget?.amount) || 0;
-  const warningThreshold = Number(budget?.warningThreshold ?? 0.8);
-  const exceededThreshold = Number(budget?.exceededThreshold ?? 1);
-  const hasBudget = budgetAmount > 0;
-  const ratio = hasBudget ? monthlySpent / budgetAmount : 0;
-  const progress = Math.min(ratio, 1);
-
-  if (!hasBudget) {
-    return {
-      hasBudget,
-      budgetAmount,
-      color: BUDGET_COLORS.onTrack,
-      detail: "Set a monthly limit to track your pace.",
-      progress,
-      status: "No budget set"
-    };
-  }
-
-  if (ratio >= exceededThreshold) {
-    return {
-      hasBudget,
-      budgetAmount,
-      color: BUDGET_COLORS.exceeded,
-      detail: `${formatCurrency(monthlySpent - budgetAmount)} over budget`,
-      progress,
-      status: "Budget exceeded"
-    };
-  }
-
-  if (ratio >= warningThreshold) {
-    return {
-      hasBudget,
-      budgetAmount,
-      color: BUDGET_COLORS.warning,
-      detail: `${formatCurrency(budgetAmount - monthlySpent)} left this month`,
-      progress,
-      status: "Nearing monthly budget"
-    };
-  }
-
-  return {
-    hasBudget,
-    budgetAmount,
-    color: BUDGET_COLORS.onTrack,
-    detail: `${formatCurrency(budgetAmount - monthlySpent)} left this month`,
-    progress,
-    status: "On track"
-  };
-}
 
 function BudgetProgressCard({ budget, errorMessage, loading, monthlySpent, onEdit }) {
   const budgetState = getBudgetState(budget, monthlySpent);
@@ -356,6 +68,9 @@ function BudgetProgressCard({ budget, errorMessage, loading, monthlySpent, onEdi
           </View>
 
           <Text style={[styles.budgetDetail, { color: budgetState.color }]}>{budgetState.detail}</Text>
+          {budgetState.hasBudget ? (
+            <Text style={styles.budgetHint}>Alerts fire once per month at 80% and 100%.</Text>
+          ) : null}
         </>
       )}
 
@@ -410,7 +125,7 @@ export default function SpendingSummaryScreen({ user }) {
   const [savingBudget, setSavingBudget] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = subscribeToExpenses(
+    const unsubscribe = subscribeToPersonalExpenses(
       user.uid,
       (items) => {
         setExpenses(items);
@@ -732,6 +447,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
     marginTop: 10
+  },
+  budgetHint: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 6
   },
   budgetErrorText: {
     color: "#991B1B",

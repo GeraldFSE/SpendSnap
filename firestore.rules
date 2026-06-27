@@ -1,0 +1,137 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // The set of group ids the caller currently belongs to (or [] before they join any).
+    // Used to authorize reading fellow group members' expenses without a per-doc get().
+    function callerGroupIds() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/settings/groups)
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)/settings/groups).data.get('ids', [])
+        : [];
+    }
+
+    // An invite-code join: the only change to `members` is the caller adding their own
+    // key as `true`, with an optional email label for that same caller. affectedKeys()
+    // is direction-independent, so this avoids the addedKeys()/removedKeys() pitfall.
+    function isSelfJoin(existingMembers, incomingMembers, existingEmails, incomingEmails) {
+      return resource.data.get('archived', false) != true
+        && incomingMembers.diff(existingMembers).affectedKeys().hasOnly([request.auth.uid])
+        && incomingMembers[request.auth.uid] == true
+        && !(request.auth.uid in existingMembers)
+        && incomingEmails.diff(existingEmails).affectedKeys().hasOnly([request.auth.uid])
+        && (!(request.auth.uid in incomingEmails) || incomingEmails[request.auth.uid] is string);
+    }
+
+    // A member may leave by removing only their own membership/email keys.
+    function isSelfLeave(existingMembers, incomingMembers, existingEmails, incomingEmails) {
+      return request.auth.uid in existingMembers
+        && incomingMembers.diff(existingMembers).affectedKeys().hasOnly([request.auth.uid])
+        && !(request.auth.uid in incomingMembers)
+        && incomingEmails.diff(existingEmails).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    // Existing members may backfill/update only their own display email.
+    function isOwnEmailUpdate(existingMembers, existingEmails, incomingEmails) {
+      return request.auth.uid in existingMembers
+        && incomingEmails.diff(existingEmails).affectedKeys().hasOnly([request.auth.uid])
+        && incomingEmails[request.auth.uid] is string;
+    }
+
+    function isOwnerRename() {
+      return request.auth.uid == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.name is string;
+    }
+
+    function isOwnerArchive() {
+      return request.auth.uid == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived', 'archivedAt'])
+        && request.resource.data.archived == true;
+    }
+
+    // Membership lookup table for shared budgets. Members is a map of uid -> true
+    // so rules can check membership without reading an array.
+    match /groups/{groupId} {
+      allow get: if isSignedIn() && request.auth.uid in resource.data.members;
+      // Groups are joined by a known id/invite code, not discovered via query.
+      allow list: if false;
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.members[request.auth.uid] == true;
+
+      allow update: if isSignedIn()
+        && request.resource.data.ownerId == resource.data.ownerId
+        && (
+          isOwnerRename()
+          || isOwnerArchive()
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberEmails'])
+            && isSelfJoin(
+              resource.data.members,
+              request.resource.data.members,
+              resource.data.get('memberEmails', {}),
+              request.resource.data.get('memberEmails', {})
+            )
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberEmails'])
+            && isSelfLeave(
+              resource.data.members,
+              request.resource.data.members,
+              resource.data.get('memberEmails', {}),
+              request.resource.data.get('memberEmails', {})
+            )
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberEmails'])
+            && isOwnEmailUpdate(
+              resource.data.members,
+              resource.data.get('memberEmails', {}),
+              request.resource.data.get('memberEmails', {})
+            )
+          )
+        );
+
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+
+      // Direct/own-subcollection access. Home, Summary and History read the caller's
+      // own expenses through this path; cross-member group reads go through the
+      // collection-group rule below instead.
+      match /expenses/{expenseId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn()
+          && request.auth.uid == userId
+          && request.resource.data.userId == userId;
+
+        allow update, delete: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /settings/{settingId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // A collectionGroup("expenses") query (used by the Group tab) is a distinct request
+    // shape only eligible under a recursive-wildcard match. List-time evaluation can only
+    // read fields the query filters/orders on (groupIds, date), so the rule must touch
+    // nothing else: a caller may read an expense if they share a group with its author.
+    match /{path=**}/expenses/{expenseId} {
+      allow read: if isSignedIn()
+        && resource.data.get('groupIds', []).hasAny(callerGroupIds());
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

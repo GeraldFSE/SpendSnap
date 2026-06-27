@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
 import { initializeApp, getApps } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
@@ -12,15 +14,35 @@ import {
 } from "firebase/auth";
 import {
   addDoc,
+  arrayRemove,
+  arrayUnion,
   collection,
+  collectionGroup,
+  deleteDoc,
+  deleteField,
   doc,
+  getDoc,
+  getDocs,
   getFirestore,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-  setDoc
+  setDoc,
+  updateDoc,
+  where,
+  writeBatch
 } from "firebase/firestore";
+import { formatCurrency } from "../utils/currency";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true
+  })
+});
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -67,6 +89,19 @@ function getMonthlyBudgetRef(userId) {
   return doc(db, "users", userId, "settings", "monthlyBudget");
 }
 
+function getUserGroupsSettingsRef(userId) {
+  requireUserId(userId);
+  return doc(db, "users", userId, "settings", "groups");
+}
+
+function getGroupRef(groupId) {
+  if (!groupId) {
+    throw new Error("A group ID is required.");
+  }
+
+  return doc(db, "groups", groupId);
+}
+
 export function subscribeToAuthState(onUser, onError) {
   return onAuthStateChanged(auth, onUser, onError);
 }
@@ -87,31 +122,62 @@ export async function signOutUser() {
   return signOut(auth);
 }
 
-export async function saveExpense(userId, { amount, category, notes }) {
-  return addDoc(getExpensesRef(userId), {
+export async function saveExpense(userId, { amount, category, notes, groupIds }) {
+  const savedExpense = await addDoc(getExpensesRef(userId), {
     amount: Number(amount),
     category,
     notes: notes?.trim() ?? "",
-    date: serverTimestamp()
+    date: serverTimestamp(),
+    userId,
+    // Every expense stays in the author's personal history; selected group ids make it
+    // visible in those shared budgets too. Empty means personal-only.
+    groupIds: Array.isArray(groupIds) ? groupIds : []
   });
+
+  try {
+    await checkBudgetAndNotify(userId);
+  } catch (error) {
+    console.warn("Unable to check budget alerts.", error);
+  }
+
+  return savedExpense;
 }
 
-export function subscribeToExpenses(userId, onExpenses, onError) {
-  // Real-time listener keeps the Home screen in sync with Firestore changes.
-  const expensesQuery = query(getExpensesRef(userId), orderBy("date", "desc"));
+export async function deleteExpense(userId, expenseId) {
+  requireUserId(userId);
 
-  return onSnapshot(
-    expensesQuery,
-    (snapshot) => {
-      const expenses = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data({ serverTimestamps: "estimate" })
-      }));
+  if (!expenseId) {
+    throw new Error("An expense ID is required.");
+  }
 
-      onExpenses(expenses);
-    },
-    onError
+  return deleteDoc(doc(db, "users", userId, "expenses", expenseId));
+}
+
+function mapExpenses(snapshot) {
+  return snapshot.docs.map((document) => ({
+    id: document.id,
+    ...document.data({ serverTimestamps: "estimate" })
+  }));
+}
+
+export function subscribeToPersonalExpenses(userId, onExpenses, onError) {
+  // Home, Summary and History show the caller's own expenses only -- never affected by
+  // creating, joining or leaving a group.
+  const personalQuery = query(getExpensesRef(userId), orderBy("date", "desc"));
+
+  return onSnapshot(personalQuery, (snapshot) => onExpenses(mapExpenses(snapshot)), onError);
+}
+
+export function subscribeToGroupExpenses(groupId, onExpenses, onError) {
+  // Collection-group query spans every member's "expenses" subcollection, surfacing all
+  // spending tagged into this group (each member's docs carry the group id in groupIds).
+  const groupQuery = query(
+    collectionGroup(db, "expenses"),
+    where("groupIds", "array-contains", groupId),
+    orderBy("date", "desc")
   );
+
+  return onSnapshot(groupQuery, (snapshot) => onExpenses(mapExpenses(snapshot)), onError);
 }
 
 export async function saveMonthlyBudget(userId, amount) {
@@ -119,7 +185,7 @@ export async function saveMonthlyBudget(userId, amount) {
     getMonthlyBudgetRef(userId),
     {
       amount: Number(amount),
-      currency: "USD",
+      currency: "SGD",
       period: "monthly",
       warningThreshold: 0.8,
       exceededThreshold: 1,
@@ -145,4 +211,251 @@ export function subscribeToMonthlyBudget(userId, onBudget, onError) {
     },
     onError
   );
+}
+
+function getCurrentMonthKey(date = new Date()) {
+  return `${date.getFullYear()}-${date.getMonth() + 1}`;
+}
+
+function getCurrentMonthRange() {
+  const start = new Date();
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
+
+  return { start, end };
+}
+
+async function requestNotificationPermission() {
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("budget-alerts", {
+      name: "Budget alerts",
+      importance: Notifications.AndroidImportance.DEFAULT
+    });
+  }
+
+  const existing = await Notifications.getPermissionsAsync();
+
+  if (existing.granted) {
+    return true;
+  }
+
+  const requested = await Notifications.requestPermissionsAsync();
+  return requested.granted;
+}
+
+export async function checkBudgetAndNotify(userId) {
+  requireUserId(userId);
+
+  const budgetRef = getMonthlyBudgetRef(userId);
+  const budgetSnapshot = await getDoc(budgetRef);
+
+  if (!budgetSnapshot.exists()) {
+    return;
+  }
+
+  const budget = budgetSnapshot.data();
+  const budgetAmount = Number(budget.amount) || 0;
+
+  if (budgetAmount <= 0) {
+    return;
+  }
+
+  const { start, end } = getCurrentMonthRange();
+  const monthKey = getCurrentMonthKey(start);
+  const expensesQuery = query(getExpensesRef(userId), where("date", ">=", start), where("date", "<", end));
+  const expensesSnapshot = await getDocs(expensesQuery);
+  const monthlyTotal = expensesSnapshot.docs.reduce((sum, document) => {
+    return sum + (Number(document.data().amount) || 0);
+  }, 0);
+
+  const ratio = monthlyTotal / budgetAmount;
+  const alertMonth = budget.alertMonth === monthKey ? budget.alertMonth : monthKey;
+  const alerted80 = budget.alertMonth === monthKey ? Boolean(budget.alerted80) : false;
+  const alerted100 = budget.alertMonth === monthKey ? Boolean(budget.alerted100) : false;
+  let nextAlerted80 = alerted80;
+  let nextAlerted100 = alerted100;
+  let notification = null;
+
+  if (ratio >= 1 && !alerted100) {
+    nextAlerted80 = true;
+    nextAlerted100 = true;
+    notification = {
+      title: "Budget exceeded",
+      body: `You've spent ${formatCurrency(monthlyTotal)} of your ${formatCurrency(budgetAmount)} monthly budget.`
+    };
+  } else if (ratio >= 0.8 && !alerted80) {
+    nextAlerted80 = true;
+    notification = {
+      title: "Budget warning",
+      body: `You've used ${Math.round(ratio * 100)}% of your ${formatCurrency(budgetAmount)} monthly budget.`
+    };
+  }
+
+  await setDoc(
+    budgetRef,
+    {
+      alertMonth,
+      alerted80: nextAlerted80,
+      alerted100: nextAlerted100,
+      lastCheckedAt: serverTimestamp()
+    },
+    { merge: true }
+  );
+
+  if (!notification) {
+    return;
+  }
+
+  const granted = await requestNotificationPermission();
+
+  if (!granted) {
+    return;
+  }
+
+  await Notifications.scheduleNotificationAsync({
+    content: notification,
+    trigger: null
+  });
+}
+
+export function subscribeToUserGroups(userId, onGroupIds, onError) {
+  // The list of groups a user belongs to; empty until they create or join one.
+  return onSnapshot(
+    getUserGroupsSettingsRef(userId),
+    (snapshot) => {
+      const ids = snapshot.exists() ? snapshot.data().ids : null;
+      onGroupIds(Array.isArray(ids) ? ids : []);
+    },
+    onError
+  );
+}
+
+export function subscribeToGroup(groupId, onGroup, onError) {
+  return onSnapshot(
+    getGroupRef(groupId),
+    (snapshot) => {
+      onGroup(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+    },
+    onError
+  );
+}
+
+// Strip a group id from every one of the user's existing expenses (used on leave) so
+// their past spending stops counting toward that group. Batched in chunks to stay
+// under Firestore's 500-write limit.
+async function retagExpenseGroup(userId, groupId, operation) {
+  const snapshot = await getDocs(getExpensesRef(userId));
+
+  for (let index = 0; index < snapshot.docs.length; index += 450) {
+    const batch = writeBatch(db);
+    snapshot.docs.slice(index, index + 450).forEach((document) => {
+      batch.update(document.ref, { groupIds: operation });
+    });
+    await batch.commit();
+  }
+}
+
+// A member's email is stored in the group doc (which members can read) because Auth
+// emails aren't reachable from another user's uid on the client.
+function currentUserEmail() {
+  return auth.currentUser?.email ?? null;
+}
+
+export async function createGroup(userId, name) {
+  requireUserId(userId);
+  const groupRef = doc(collection(db, "groups"));
+  const email = currentUserEmail();
+
+  await setDoc(groupRef, {
+    name: name?.trim() || "Shared budget",
+    ownerId: userId,
+    members: { [userId]: true },
+    memberEmails: email ? { [userId]: email } : {},
+    createdAt: serverTimestamp()
+  });
+
+  // Only future expenses are tagged into the group (via the live group list passed to
+  // Add Expense), so a new group's spending starts at 0 instead of inheriting history.
+  await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayUnion(groupRef.id) }, { merge: true });
+
+  return groupRef.id;
+}
+
+export async function joinGroup(userId, groupId) {
+  requireUserId(userId);
+  const trimmedGroupId = groupId?.trim();
+
+  if (!trimmedGroupId) {
+    throw new Error("Enter a group code to join.");
+  }
+
+  // A merge-set against an existing group only adds the caller's own membership key,
+  // which the security rules verify; an unknown/typo'd code fails validation instead
+  // of silently creating a bogus group.
+  const email = currentUserEmail();
+  await setDoc(
+    getGroupRef(trimmedGroupId),
+    {
+      members: { [userId]: true },
+      ...(email ? { memberEmails: { [userId]: email } } : {})
+    },
+    { merge: true }
+  );
+  // Like create, joining only affects expenses explicitly tagged into the group from
+  // now on; past spending is not backfilled into the group.
+  await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayUnion(trimmedGroupId) }, { merge: true });
+
+  return trimmedGroupId;
+}
+
+export async function leaveGroup(userId, groupId) {
+  requireUserId(userId);
+
+  if (!groupId) {
+    return;
+  }
+
+  await updateDoc(getGroupRef(groupId), {
+    [`members.${userId}`]: deleteField(),
+    [`memberEmails.${userId}`]: deleteField()
+  });
+  await setDoc(getUserGroupsSettingsRef(userId), { ids: arrayRemove(groupId) }, { merge: true });
+  await retagExpenseGroup(userId, groupId, arrayRemove(groupId));
+}
+
+export async function renameGroup(userId, groupId, name) {
+  requireUserId(userId);
+  const trimmedName = name?.trim();
+
+  if (!trimmedName) {
+    throw new Error("Enter a group name.");
+  }
+
+  await updateDoc(getGroupRef(groupId), { name: trimmedName });
+}
+
+export async function archiveGroup(userId, groupId) {
+  requireUserId(userId);
+
+  if (!groupId) {
+    throw new Error("A group ID is required.");
+  }
+
+  await updateDoc(getGroupRef(groupId), {
+    archived: true,
+    archivedAt: serverTimestamp()
+  });
+}
+
+// Backfills the caller's email into a group they already belong to (groups created
+// before emails were tracked), so existing members show up by email too.
+export async function ensureMemberEmail(groupId, userId, email) {
+  if (!groupId || !userId || !email) {
+    return;
+  }
+
+  await setDoc(getGroupRef(groupId), { memberEmails: { [userId]: email } }, { merge: true });
 }
