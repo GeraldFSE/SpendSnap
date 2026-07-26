@@ -1,0 +1,108 @@
+@startuml 02-component-diagram
+' SpendSnap — Component / layered architecture of the client.
+' Every arrow corresponds to an actual import in the codebase.
+
+title SpendSnap — Component Diagram (Layered Client Architecture)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam ArrowColor #475569
+skinparam componentStyle rectangle
+skinparam nodesep 12
+skinparam ranksep 45
+skinparam package {
+  BackgroundColor #F8FAFC
+  BorderColor #94A3B8
+  FontColor #0F172A
+}
+skinparam component {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+
+package "1 · Application Root" as ROOT {
+  [App.js\n<size:11>auth gate: LoginScreen vs. tabs</size>] as APP
+  [navigation/AppNavigator.js\n<size:11>bottom tabs · Quick Actions</size>\n<size:11>live group-id subscription</size>] as NAV
+}
+
+package "2 · Presentation — screens/ (containers: state + subscriptions)" as SCREENS {
+  [LoginScreen] as LOGIN
+  [HomeScreen] as HOME
+  [AddExpenseScreen\n<size:11>picks sharing destinations</size>] as ADD
+  [SpendingSummaryScreen] as SUMMARY
+  [HistoryScreen] as HISTORY
+  [GroupScreen\n<size:11>GroupCard · Disclosure</size>] as GROUP
+}
+
+package "2b · Presentation — components/ (reusable, presentational)" as COMPONENTS {
+  [ExpenseItem\n<size:11>{expense, attribution,</size>\n<size:11>onDelete, onLongPress}</size>] as ITEM
+  [PieChart\n<size:11>{data, size, selectedKey,</size>\n<size:11>onSlicePress}</size>] as PIE
+  [CategoryPicker\n<size:11>{categories, selected, onSelect}</size>] as PICKER
+}
+
+package "3 · Service Layer — services/" as SERVICES {
+  [firebase.js  «facade»\n<size:11>auth: subscribeToAuthState, signIn/signUp/guest, signOut</size>\n<size:11>expenses: saveExpense, deleteExpense, subscribeToPersonal/GroupExpenses</size>\n<size:11>budget: saveMonthlyBudget, subscribeToMonthlyBudget, checkBudgetAndNotify</size>\n<size:11>groups: create/join/leave/rename/archiveGroup,</size>\n<size:11>subscribeToUserGroups, subscribeToGroup, ensureMemberEmail</size>] as FBSVC
+  [openai.js\n<size:11>parseBankSmsAlert (planned stub)</size>] as OPENAI
+}
+
+package "4 · Pure Utilities — utils/ (no React, no network, unit-tested)" as UTILS {
+  [currency.js\n<size:11>formatCurrency</size>] as CUR
+  [dates.js\n<size:11>period math, range keys</size>] as DATES
+  [expenses.js\n<size:11>aggregation</size>] as EXP
+  [budget.js\n<size:11>getBudgetState</size>] as BUD
+  [pieMath.js\n<size:11>arc geometry</size>] as PMATH
+}
+
+cloud "Firebase JS SDK" as SDK
+
+' --- Root wiring ---
+APP --> LOGIN
+APP --> NAV
+NAV --> HOME
+NAV --> ADD
+NAV --> SUMMARY
+NAV --> HISTORY
+NAV --> GROUP
+
+' --- Screens compose reusable components ---
+HOME --> ITEM
+HISTORY --> ITEM
+GROUP --> PIE
+ADD --> PICKER
+
+' --- Every backend access goes through the one service module ---
+APP --> FBSVC : auth state
+LOGIN --> FBSVC : sign in / up / guest
+HOME --> FBSVC : personal expenses\n+ budget
+ADD --> FBSVC : saveExpense\n+ subscribeToGroup\n(active destinations)
+SUMMARY --> FBSVC : personal expenses\n+ budget
+HISTORY --> FBSVC : personal expenses\n+ delete
+GROUP --> FBSVC : groups + group expenses\n+ rename / archive (owner)
+NAV --> FBSVC : subscribeToUserGroups
+FBSVC --> SDK : the ONLY module\nimporting firebase/*
+
+' --- Pure logic is reachable from every layer, and depends on none of them ---
+SCREENS ..> UTILS : <<uses>> summarize, format, period math
+COMPONENTS ..> UTILS : <<uses>> formatCurrency, arcPath
+SERVICES ..> UTILS : <<uses>> formatCurrency
+
+note right of SERVICES
+  Single seam for change: swapping the
+  database, or adding caching or logging,
+  touches exactly one file.
+end note
+
+note right of UTILS
+  Dependency-free ⇒ unit-testable in
+  milliseconds (58 unit tests, no emulator).
+end note
+
+note right of COMPONENTS
+  No knowledge of Firebase ⇒ reusable and
+  testable with props alone. PieChart is generic;
+  it happens to render per-member group spend today.
+end note
+
+@enduml

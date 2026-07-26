@@ -28,6 +28,7 @@ SpendSnap helps people log expenses in a few taps, understand where their money 
    - 6.5 [Data flow and the real-time subscription model](#65-data-flow-and-the-real-time-subscription-model)
    - 6.6 [The security rules as the server-side authorization tier](#66-the-security-rules-as-the-server-side-authorization-tier)
    - 6.7 [Key design decisions and trade-offs](#67-key-design-decisions-and-trade-offs)
+   - 6.8 [Design diagrams (index)](#68-design-diagrams-index)
 7. [Data Model](#7-data-model)
 8. [Service & Data API Reference](#8-service--data-api-reference)
 9. [Security Rules Reference](#9-security-rules-reference)
@@ -83,6 +84,12 @@ SpendSnap targets each of these:
 - *As a budget-conscious user,* I want daily, weekly, and monthly charts so I can understand where my money is going.
 - *As a user with a spending limit,* I want alerts before I overspend so I can adjust early.
 - *As a user managing shared costs,* I want to share a budget with friends or family so everyone sees updated spending in real time — while still keeping my own personal totals separate.
+
+Those stories map onto the following use cases:
+
+![Use case diagram: registered user, guest, group member and group owner, against account, logging, insight, budget and shared-budget use cases](docs/diagrams/png/07-use-case.png)
+
+<sub>Source: [`docs/diagrams/07-use-case.puml`](docs/diagrams/07-use-case.puml) · [SVG](docs/diagrams/svg/07-use-case.svg)</sub>
 
 ---
 
@@ -176,28 +183,9 @@ This section is the heart of the document. SpendSnap is deliberately built to sh
 
 SpendSnap follows a classic **client–server** model. The mobile app is the client; **Firebase acts as the server tier** (a managed *Backend-as-a-Service*, or BaaS). There is no bespoke application server to write, deploy, or scale — Firebase provides authentication, a real-time database, and a server-side authorization engine out of the box.
 
-```
-┌───────────────────────────────────────────────────────────┐
-│                    CLIENT (mobile app)                      │
-│                React Native + Expo (iOS/Android)            │
-│                                                             │
-│   Presentation:  screens/  +  components/                   │
-│   Service layer: services/firebase.js  (the only code that  │
-│                  talks to Firebase)                         │
-│   Pure logic:    utils/  (no RN, no network — unit tested)  │
-└───────────────▲───────────────────────────▲────────────────┘
-                │  Firebase JS SDK (HTTPS/WebSocket)
-                │  - ID token on every request
-                │  - real-time onSnapshot streams
-   ┌────────────┴───────────────────────────┴────────────────┐
-   │                  SERVER TIER (Firebase)                   │
-   │                                                           │
-   │   Firebase Authentication   →  identity / ID tokens       │
-   │   Cloud Firestore           →  document database + sync   │
-   │   Firestore Security Rules  →  server-enforced AUTHZ      │
-   │   Composite indexes         →  query execution            │
-   └───────────────────────────────────────────────────────────┘
-```
+![System architecture: the Expo client, its three internal layers, and the Firebase server tier](docs/diagrams/png/01-system-architecture.png)
+
+<sub>Source: [`docs/diagrams/01-system-architecture.puml`](docs/diagrams/01-system-architecture.puml) · [SVG](docs/diagrams/svg/01-system-architecture.svg)</sub>
 
 The boundary between client and server is crisp:
 
@@ -225,31 +213,9 @@ Choosing Firebase over a hand-rolled Node/Express + database server was a delibe
 
 The client is split into layers with a strict, one-directional dependency rule: **presentation → service → backend**, and **everything may depend on pure utilities**, but utilities depend on nothing app-specific.
 
-```
-        ┌─────────────────────────────────────────────┐
-        │  Presentation Layer                          │
-        │  screens/*  (compose UI, hold screen state)  │
-        │  components/* (reusable, presentational)     │
-        └───────────────┬─────────────────────────────┘
-                        │ calls
-        ┌───────────────▼─────────────────────────────┐
-        │  Service Layer                               │
-        │  services/firebase.js                        │
-        │  - the ONLY module importing the Firebase SDK│
-        │  - exposes intention-revealing functions     │
-        │    (saveExpense, subscribeToGroupExpenses…)  │
-        └───────────────┬─────────────────────────────┘
-                        │ Firebase SDK
-        ┌───────────────▼─────────────────────────────┐
-        │  Backend (Firebase)                          │
-        └──────────────────────────────────────────────┘
+![Component diagram: application root, screens, reusable components, the firebase.js service facade, and the pure utils layer](docs/diagrams/png/02-component-diagram.png)
 
-        ┌──────────────────────────────────────────────┐
-        │  Pure Utilities (no React, no Firebase)       │
-        │  utils/currency, dates, expenses, budget,     │
-        │  pieMath  ── imported by any layer above ──   │
-        └──────────────────────────────────────────────┘
-```
+<sub>Every arrow above corresponds to an actual import in the codebase. Source: [`docs/diagrams/02-component-diagram.puml`](docs/diagrams/02-component-diagram.puml) · [SVG](docs/diagrams/svg/02-component-diagram.svg)</sub>
 
 **Why this matters**
 
@@ -310,6 +276,13 @@ useEffect(() => {
 }, [user.uid]);
 ```
 
+The full round trip — including the budget-alert side effect and the push to other group
+members' devices — is traced below.
+
+![Sequence diagram: logging an expense, the budget check, and real-time fan-out to a group member's device](docs/diagrams/png/04-sequence-add-expense.png)
+
+<sub>Source: [`docs/diagrams/04-sequence-add-expense.puml`](docs/diagrams/04-sequence-add-expense.puml) · [SVG](docs/diagrams/svg/04-sequence-add-expense.svg)</sub>
+
 Notable properties:
 
 - **No manual refresh.** When any member of a group logs an expense, the group's `onSnapshot` fires on every other member's device and the pie chart re-renders.
@@ -327,6 +300,13 @@ Highlights of the authorization model (full reference in [§9](#9-security-rules
 - **Group members can read each other's group-tagged expenses** via a collection-group query. The rule authorises this with a set-intersection check, `resource.data.groupIds.hasAny(callerGroupIds())`, where `callerGroupIds()` looks up the caller's own membership document. No per-document `get()` of the group is needed, which keeps list queries efficient.
 - **Joining by invite code is a "self-join only" operation.** The `isSelfJoin` helper uses a direction-independent `diff().affectedKeys()` check so that a caller can only add *their own* membership key and cannot hijack ownership or add others.
 - Groups are **joined by known id**, never discovered — `list` on the `groups` collection is denied.
+
+The invite-code join is the most interesting case, because the *same* write is allowed or
+denied depending on what it changes:
+
+![Sequence diagram: joining a group by invite code, with the rules allowing a self-join and denying member hijacking](docs/diagrams/png/05-sequence-join-group.png)
+
+<sub>Source: [`docs/diagrams/05-sequence-join-group.puml`](docs/diagrams/05-sequence-join-group.puml) · [SVG](docs/diagrams/svg/05-sequence-join-group.svg)</sub>
 
 Because these rules *are* logic, they are tested like logic: the [system test suite](#14-testing) spins up the Firestore Emulator and asserts both the allowed and denied paths.
 
@@ -348,11 +328,48 @@ A client cannot look up another user's email from their UID. So each member's em
 **4. Pure logic is extracted from UI.**
 Date math, aggregation, budget evaluation, currency formatting, and pie geometry live in `utils/` precisely so they can be unit-tested without a renderer or network — and so screens stay thin.
 
+### 6.8 Design diagrams (index)
+
+All design diagrams are written in **PlantUML** and kept in [`docs/diagrams/`](docs/diagrams), so they are version-controlled next to the code they describe and can be re-rendered deterministically. Rendered `png/` (for this README) and `svg/` (for slides and printing) are committed alongside the sources.
+
+| # | Diagram | Type | Answers |
+| --- | --- | --- | --- |
+| 1 | [System architecture](docs/diagrams/png/01-system-architecture.png) | Deployment / component | Where the client ends and the Firebase server tier begins ([§6.1](#61-high-level-clientserver-with-a-baas-backend)) |
+| 2 | [Component diagram](docs/diagrams/png/02-component-diagram.png) | Component | The layered client and its one-directional dependencies ([§6.3](#63-layered-architecture-of-the-client)) |
+| 3 | [Data model](docs/diagrams/png/03-data-model.png) | Class | Firestore document shapes and the `groupIds` mirroring ([§7](#7-data-model)) |
+| 4 | [Log an expense](docs/diagrams/png/04-sequence-add-expense.png) | Sequence | Save → budget alert → real-time fan-out ([§6.5](#65-data-flow-and-the-real-time-subscription-model)) |
+| 5 | [Join a group](docs/diagrams/png/05-sequence-join-group.png) | Sequence | How the rules permit a self-join and nothing more ([§6.6](#66-the-security-rules-as-the-server-side-authorization-tier)) |
+| 6 | [Budget alert evaluation](docs/diagrams/png/06-activity-budget-alert.png) | Activity | `checkBudgetAndNotify()` thresholds and per-month de-duplication |
+| 7 | [Use cases](docs/diagrams/png/07-use-case.png) | Use case | Actors and the features they reach ([§2](#2-problem-motivation)) |
+| 8 | [Auth gate & navigation](docs/diagrams/png/08-navigation-state.png) | State machine | The top-level app state machine ([§6.5](#65-data-flow-and-the-real-time-subscription-model)) |
+
+The two not embedded elsewhere in this document:
+
+![Activity diagram: budget alert evaluation, including per-month de-duplication of the 80% and 100% notifications](docs/diagrams/png/06-activity-budget-alert.png)
+
+![State diagram: the auth gate in App.js and the bottom-tab navigation it unlocks](docs/diagrams/png/08-navigation-state.png)
+
+To re-render after editing a `.puml` file:
+
+```bash
+cd docs/diagrams
+./render.sh                 # all diagrams → png/ and svg/
+./render.sh 03-data-model   # just one
+```
+
+The script needs a JDK and fetches `plantuml.jar` on first run; Graphviz is optional (see [`docs/diagrams/README.md`](docs/diagrams/README.md)).
+
 ---
 
 ## 7. Data Model
 
 Firestore is schemaless, but SpendSnap maintains a **consistent, documented document shape**. All application data lives under two top-level collections: `users` and `groups`.
+
+![Class diagram of the Firestore data model: users with expenses and settings subcollections, and groups with a members map](docs/diagrams/png/03-data-model.png)
+
+<sub>Source: [`docs/diagrams/03-data-model.puml`](docs/diagrams/03-data-model.puml) · [SVG](docs/diagrams/svg/03-data-model.svg)</sub>
+
+The same structure as a literal document tree:
 
 ```
 users/{userId}
@@ -627,6 +644,13 @@ SpendSnap/
 ├── firestore.rules              # Server-side authorization (the backend "logic" tier)
 ├── firestore.indexes.json       # Composite index for the group collection-group query
 ├── .env.example                 # Template for required environment variables
+│
+├── docs/
+│   └── diagrams/                # PlantUML design diagrams (see §6.8)
+│       ├── *.puml               # Sources — the diagrams of record
+│       ├── png/                 # Rendered for the README
+│       ├── svg/                 # Rendered for slides/printing
+│       └── render.sh            # Regenerates png/ and svg/
 │
 ├── src/
 │   ├── navigation/

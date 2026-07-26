@@ -1,0 +1,73 @@
+@startuml 06-activity-budget-alert
+' SpendSnap — checkBudgetAndNotify(): the monthly budget alert algorithm,
+' including per-month de-duplication of notifications.
+
+title SpendSnap — Activity: Budget Alert Evaluation (checkBudgetAndNotify)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #475569
+skinparam activity {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+  DiamondBackgroundColor #FEF9C3
+  DiamondBorderColor #CA8A04
+}
+
+start
+:an expense is saved\n(saveExpense → checkBudgetAndNotify);
+
+:read users/{uid}/settings/monthlyBudget;
+
+if (budget document exists?) then (no)
+  stop
+else (yes)
+endif
+
+if (budget.amount > 0?) then (no)
+  stop
+else (yes)
+endif
+
+:compute current month range\n[1st 00:00, 1st of next month);
+:monthKey = "YYYY-M";
+:query this month's expenses\n(date ≥ start AND date < end);
+:monthlyTotal = Σ amount;
+:ratio = monthlyTotal / budget.amount;
+
+note right
+  Alert flags are scoped to a month.
+  If budget.alertMonth ≠ monthKey the
+  flags reset to false — a new month
+  starts with a clean slate.
+end note
+
+if (ratio ≥ 1.0 AND not alerted100 this month?) then (yes)
+  :set alerted80 = true, alerted100 = true;
+  :notification = "Budget exceeded"\nspent X of Y;
+elseif (ratio ≥ 0.8 AND not alerted80 this month?) then (yes)
+  :set alerted80 = true;
+  :notification = "Budget warning"\nN% of Y used;
+else (no threshold crossed\nor already alerted)
+  :notification = none;
+endif
+
+:persist alertMonth, alerted80,\nalerted100, lastCheckedAt (merge);
+
+if (notification prepared?) then (no)
+  stop
+else (yes)
+endif
+
+:ensure Android notification channel\n"budget-alerts";
+if (notification permission granted?) then (no)
+  :skip silently;
+  stop
+else (yes)
+  :scheduleNotificationAsync(trigger = null)\n→ fires immediately;
+endif
+
+stop
+
+@enduml

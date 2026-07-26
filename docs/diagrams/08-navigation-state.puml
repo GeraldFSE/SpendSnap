@@ -1,0 +1,90 @@
+@startuml 08-navigation-state
+' SpendSnap — Top-level application state machine: the auth gate in App.js
+' and the bottom-tab navigation it unlocks.
+
+title SpendSnap — State Diagram: Auth Gate & Navigation
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #475569
+skinparam state {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+  StartColor #16A34A
+  EndColor #DC2626
+}
+
+[*] --> CheckingAuth
+
+state "Checking Auth" as CheckingAuth #FEF9C3 {
+  CheckingAuth : App.js subscribes to subscribeToAuthState()
+  CheckingAuth : shows a spinner while the persisted
+  CheckingAuth : session is restored from AsyncStorage
+}
+
+CheckingAuth --> SignedOut : onAuthStateChanged(null)
+CheckingAuth --> SignedIn : onAuthStateChanged(user)
+
+state "Signed Out" as SignedOut {
+  SignedOut : LoginScreen
+  SignedOut : email/password sign-in, sign-up, or guest
+}
+
+SignedOut -right-> SignedIn : sign in / sign up / guest
+SignedIn -up-> SignedOut : sign out
+
+state "Signed In — AppNavigator" as SignedIn {
+  [*] --> Home
+
+  state "subscribeToUserGroups(uid)\n→ groupIds (live)" as GroupSub #F8FAFC
+  GroupSub : Add Expense resolves each group doc
+  GroupSub : to offer active (non-archived) destinations
+
+  state Home
+  Home : month-to-date, today, budget bar,
+  Home : 3 most recent expenses
+
+  state "Add Expense" as Add
+  Add : amount + category + notes
+  Add : ticks the active groups to share it with
+  Add : (personal-only when none are ticked)
+
+  state Summary
+  Summary : daily / weekly / monthly bar charts
+
+  state History
+  History : filters + category breakdown
+  History : long-press to delete
+
+  state Group
+  Group : one collapsible card per active group
+  Group : invite code · members · member pie chart
+  Group : owner only: rename · archive
+
+  Home --> Add : tab / Quick Action
+  Home --> Summary : tab
+  Home --> History : tab
+  Home --> Group : tab
+  Add --> Home : tab
+  Summary --> History : tab
+  History --> Group : tab
+  Group --> Home : tab
+
+  Add --> Add : save → confirmation,\nform resets
+}
+
+note right of SignedIn
+  Every data-driven screen opens its Firestore
+  subscription in useEffect and returns the
+  unsubscribe handle, so listeners are torn
+  down on unmount — no leaks across tabs.
+end note
+
+note left of CheckingAuth
+  A Quick Action fired before the navigator is
+  ready is queued in a ref and replayed on
+  NavigationContainer.onReady().
+end note
+
+@enduml

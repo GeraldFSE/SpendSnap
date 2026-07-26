@@ -1,0 +1,110 @@
+@startuml 03-data-model
+' SpendSnap — Firestore document model expressed as a class diagram.
+' Firestore is schemaless; this is the shape the application consistently writes.
+
+title SpendSnap — Data Model (Firestore document structure)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundcorner 6
+skinparam ArrowColor #475569
+skinparam class {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+  AttributeFontColor #334155
+}
+hide circle
+
+package "users/{userId}" as USERS #F8FAFC {
+
+  class "User (Firebase Auth)" as User {
+    +uid : string
+    +email : string?  <size:10>(null for guests)</size>
+    +isAnonymous : boolean
+  }
+
+  class "expenses/{expenseId}" as Expense {
+    +amount : number  <size:10>SGD</size>
+    +category : "Food"|"Transport"|"Shopping"|"Bills"|"Others"
+    +notes : string  <size:10>may be ""</size>
+    +date : timestamp  <size:10>serverTimestamp()</size>
+    +userId : string  <size:10>== {userId}; used by collection-group reads</size>
+    +groupIds : string[]  <size:10>selected groups this expense appears in ([] = personal-only)</size>
+  }
+
+  class "settings/monthlyBudget" as Budget {
+    +amount : number
+    +currency : "SGD"
+    +period : "monthly"
+    +warningThreshold : number = 0.8
+    +exceededThreshold : number = 1
+    ..alert de-duplication..
+    +alertMonth : string  <size:10>"YYYY-M"</size>
+    +alerted80 : boolean
+    +alerted100 : boolean
+    +updatedAt : timestamp
+    +lastCheckedAt : timestamp
+  }
+
+  class "settings/groups" as UserGroups {
+    +ids : string[]  <size:10>groups the user belongs to</size>
+  }
+}
+
+package "groups/{groupId}" as GROUPS #FFFBEB {
+  class "Group" as Group {
+    +name : string  <size:10>owner may rename</size>
+    +ownerId : string  <size:10>creator; can rename / archive / delete</size>
+    +members : map<uid, true>  <size:10>membership set</size>
+    +memberEmails : map<uid, string>  <size:10>denormalised for display</size>
+    +createdAt : timestamp
+    ..archiving (optional fields)..
+    +archived : boolean  <size:10>hidden from active UI for every member</size>
+    +archivedAt : timestamp
+  }
+}
+
+User "1" *-- "0..*" Expense : subcollection\nexpenses/
+User "1" *-- "0..1" Budget : subcollection\nsettings/
+User "1" *-- "0..1" UserGroups : subcollection\nsettings/
+
+UserGroups "0..*" --> "0..*" Group : ids[] reference\n<size:10>drives callerGroupIds() in rules</size>
+Expense "0..*" --> "0..*" Group : groupIds[] tag\n<size:10>array-contains query per group</size>
+Group "1" o-- "1..*" User : members map
+
+note bottom of Expense
+  **Tagging, not duplication.**
+  One document per expense; sharing it with a
+  group is a tag in groupIds[]. A group's spend =
+  every expense whose groupIds contains its id.
+
+  The author **chooses** the destinations when
+  logging (personal-only by default), so a new
+  group starts at 0 and past expenses are never
+  retroactively re-tagged.
+end note
+
+note right of Group
+  **Why a map, not an array?**
+  members: {uid: true} lets Security Rules test
+  `request.auth.uid in resource.data.members`
+  and lets a join be a single-key mutation
+  that isSelfJoin() can validate.
+
+  memberEmails is denormalised because a client
+  cannot resolve another user's email from a uid.
+
+  `archived` is a soft delete: the group and its
+  history survive, but it disappears from every
+  member's active list and can no longer be joined.
+end note
+
+note as IDX #FEF9C3
+  **Composite index** (firestore.indexes.json)
+  collection group `expenses`
+  groupIds ARRAY_CONTAINS + date DESC
+end note
+IDX .. Expense
+
+@enduml

@@ -1,0 +1,121 @@
+@startuml 07-use-case
+' SpendSnap — Use cases, mapped to the user stories in the README.
+' Actors are generalised: everything a signed-in user can do sits on the base actor,
+' and each specialised actor adds only what is unique to it.
+
+' The trailing \n keeps the title clear of the diagram frame, which Smetana
+' otherwise draws flush against it.
+title SpendSnap — Use Case Diagram\n
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #475569
+skinparam usecase {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+skinparam actor {
+  BackgroundColor #F8FAFC
+  BorderColor #475569
+}
+left to right direction
+
+actor "Signed-in User" as U
+actor "Registered User\n(email account)" as R
+actor "Guest User\n(anonymous)" as G
+actor "Group Owner" as O
+
+R --|> U
+G --|> U
+O --|> U
+
+rectangle "SpendSnap" #F8FAFC {
+
+  package "Account" {
+    usecase "Sign up with email" as UC1
+    usecase "Sign in" as UC2
+    usecase "Continue as guest" as UC3
+    usecase "Sign out" as UC4
+  }
+
+  package "Everyday logging" {
+    usecase "Log an expense\n(amount, category, notes)" as UC5
+    usecase "Choose sharing destinations\n(personal-only, or tick groups)" as UC20
+    usecase "Log via app-icon\nQuick Action" as UC6
+    usecase "Delete an expense\n(long-press)" as UC7
+  }
+
+  package "Insight" {
+    usecase "View home dashboard\n(month-to-date, today, budget bar)" as UC8
+    usecase "View spending summaries\n(daily / weekly / monthly charts)" as UC9
+    usecase "Browse history\nwith period filters" as UC10
+    usecase "See category breakdown" as UC11
+  }
+
+  package "Budget control" {
+    usecase "Set / edit monthly budget" as UC12
+    usecase "Receive 80% / 100%\nbudget alert" as UC13
+  }
+
+  package "Shared budgets" {
+    usecase "Create a group" as UC14
+    usecase "Join a group\nby invite code" as UC15
+    usecase "View per-member\nspending pie chart" as UC16
+    usecase "Drill into a member's\ncategory breakdown" as UC17
+    usecase "Leave a group" as UC18
+    usecase "Share invite code" as UC19
+    usecase "Rename the group" as UC21
+    usecase "Archive the group" as UC22
+  }
+}
+
+' Anything a signed-in user can do — registered or guest alike.
+U --> UC4
+U --> UC5
+U --> UC6
+U --> UC7
+U --> UC8
+U --> UC9
+U --> UC10
+U --> UC12
+U --> UC13
+U --> UC14
+U --> UC15
+U --> UC16
+U --> UC18
+U --> UC20
+
+' Only what each specialised actor adds.
+R --> UC1
+R --> UC2
+G --> UC3
+O --> UC19
+O --> UC21
+O --> UC22
+
+UC6 ..> UC5 : <<include>>
+UC5 ..> UC20 : <<include>>
+UC5 ..> UC13 : <<include>>\nevaluated on every save
+UC10 ..> UC11 : <<include>>
+UC14 ..> UC19 : <<include>>
+UC16 ..> UC17 : <<extend>>
+
+legend right
+  **Rules that shape these use cases**
+  ----
+  **Budget alert** — fires at most once per threshold
+  per calendar month (de-duplicated).
+
+  **Group totals** — count only the expenses whose author
+  explicitly ticked that group while logging them.
+
+  **Archive** — a soft delete: the group leaves every
+  member's active list and its invite code stops working.
+  Owner-only, like rename.
+
+  **Guests** — have no email, so they appear as
+  "Member xxxxxx" inside a group.
+endlegend
+
+@enduml

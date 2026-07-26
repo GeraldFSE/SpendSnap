@@ -1,0 +1,80 @@
+@startuml 01-system-architecture
+' SpendSnap — System (deployment) architecture.
+' Shows the client-server split: the Expo app is the client, Firebase is the server tier.
+
+title SpendSnap — System Architecture (Client–Server with a BaaS backend)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam ArrowColor #475569
+skinparam componentStyle rectangle
+skinparam component {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+  FontColor #0F172A
+}
+skinparam database {
+  BackgroundColor #FEF9C3
+  BorderColor #CA8A04
+}
+skinparam node {
+  BackgroundColor #F8FAFC
+  BorderColor #94A3B8
+}
+skinparam cloud {
+  BackgroundColor #FFFBEB
+  BorderColor #CA8A04
+}
+
+actor "User" as USER
+
+node "Mobile Device (iOS / Android)" as DEVICE {
+
+  package "SpendSnap Client (React Native + Expo SDK 54)" as CLIENT {
+    component "Presentation Layer\n<size:11>screens/ + components/</size>" as UI
+    component "Service Layer\n<size:11>services/firebase.js</size>\n<size:11>(the only Firebase seam)</size>" as SVC
+    component "Pure Utilities\n<size:11>utils/ — currency, dates,</size>\n<size:11>expenses, budget, pieMath</size>" as UTILS
+  }
+
+  component "expo-notifications\n<size:11>local budget alerts</size>" as NOTIF
+  component "AsyncStorage\n<size:11>auth token persistence</size>" as STORE
+  component "expo-quick-actions\n<size:11>app-icon shortcut</size>" as QA
+}
+
+cloud "Firebase (BaaS)" as FIREBASE {
+  component "Firebase Authentication\n<size:11>email/password + anonymous</size>\n<size:11>issues ID tokens</size>" as AUTH
+  component "Firestore Security Rules\n<size:11>server-enforced authorization</size>\n<size:11>(firestore.rules)</size>" as RULES
+  database "Cloud Firestore\n<size:11>document store</size>\n<size:11>users/ , groups/</size>" as FS
+  component "Composite Indexes\n<size:11>groupIds ARRAY_CONTAINS + date DESC</size>" as IDX
+}
+
+USER --> UI : taps / gestures
+QA --> UI : "Log Expense" deep link
+NOTIF --> USER : 80% / 100% budget alert
+
+UI --> SVC : intention-revealing calls\n(saveExpense, subscribeTo*)
+UI ..> UTILS : <<uses>> pure logic
+SVC ..> UTILS : <<uses>> formatCurrency
+SVC --> NOTIF : scheduleNotificationAsync()
+SVC --> STORE : persist session
+
+SVC --> AUTH : HTTPS — sign in / sign up\nonAuthStateChanged
+SVC --> RULES : every read & write\ncarries the caller's ID token
+RULES --> FS : allow / deny
+FS --> SVC : onSnapshot streams (WebSocket)\nreal-time document changes
+FS ..> IDX : <<uses>> for collection-group queries
+
+note right of RULES
+  Authorization is **never** trusted to the client.
+  Rules re-evaluate every request against
+  request.auth.uid on Google's infrastructure.
+end note
+
+note bottom of CLIENT
+  Strict one-way dependency:
+  presentation → service → backend.
+  Utilities depend on nothing app-specific.
+end note
+
+@enduml

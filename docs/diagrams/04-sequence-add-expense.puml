@@ -1,0 +1,100 @@
+@startuml 04-sequence-add-expense
+' SpendSnap — Logging an expense, the budget-alert side effect,
+' and real-time fan-out to other group members.
+
+title SpendSnap — Sequence: Log an Expense (with budget alert & real-time group sync)
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #475569
+skinparam sequence {
+  ParticipantBackgroundColor #EFF6FF
+  ParticipantBorderColor #2563EB
+  ActorBackgroundColor #F8FAFC
+  LifeLineBorderColor #94A3B8
+  BoxBorderColor #CBD5E1
+  BoxBackgroundColor #F8FAFC
+}
+
+actor "User" as U
+box "Client — SpendSnap app" #F8FAFC
+  participant "AddExpenseScreen" as SCR
+  participant "AppNavigator" as NAV
+  participant "services/firebase.js" as SVC
+  participant "expo-notifications" as NOTIF
+end box
+box "Server tier — Firebase" #FFFBEB
+  participant "Security Rules" as RULES
+  database "Cloud Firestore" as FS
+end box
+participant "Group member's device\n(GroupCard)" as PEER
+
+== Setup (already live) ==
+NAV -> SVC : subscribeToUserGroups(uid)
+SVC -> FS : onSnapshot(users/{uid}/settings/groups)
+FS --> NAV : groupIds = ["g1", "g2"]
+NAV -> SCR : props: groupIds
+
+loop for each group id
+  SCR -> SVC : subscribeToGroup(groupId)
+  SVC -> FS : onSnapshot(groups/{groupId})
+  FS --> SCR : group doc
+  SCR -> SCR : drop archived groups\n→ active sharing destinations
+end
+
+== Logging ==
+U -> SCR : enter amount, pick category
+U -> SCR : tick sharing destinations\n("Also show in: …")
+note over SCR
+  Sharing is **opt-in per expense**. With nothing
+  ticked the expense is personal-only; it always
+  lands in the author's own history either way.
+end note
+U -> SCR : tap Save
+activate SCR
+SCR -> SCR : validate amount > 0
+SCR -> SVC : saveExpense(uid, {amount, category,\nnotes, groupIds: selectedGroupIds})
+activate SVC
+
+SVC -> RULES : addDoc(users/{uid}/expenses) + ID token
+activate RULES
+RULES -> RULES : create allowed?\nauth.uid == userId && data.userId == userId
+RULES --> FS : allow
+deactivate RULES
+FS --> SVC : DocumentReference
+
+== Budget check (side effect of every save) ==
+SVC -> FS : getDoc(settings/monthlyBudget)
+FS --> SVC : budget (or none → return)
+SVC -> FS : getDocs(expenses where date in [monthStart, monthEnd))
+FS --> SVC : this month's expenses
+SVC -> SVC : monthlyTotal = Σ amount\nratio = monthlyTotal / budget.amount
+
+alt ratio ≥ 1 and not yet alerted this month
+  SVC -> FS : setDoc(alerted80 = true, alerted100 = true, alertMonth)
+  SVC -> NOTIF : scheduleNotificationAsync("Budget exceeded")
+  NOTIF -> U : push alert
+else ratio ≥ 0.8 and not yet alerted this month
+  SVC -> FS : setDoc(alerted80 = true, alertMonth)
+  SVC -> NOTIF : scheduleNotificationAsync("Budget warning")
+  NOTIF -> U : push alert
+else already alerted, or below 80%
+  SVC -> FS : setDoc(lastCheckedAt)  <size:10>flags unchanged</size>
+end
+
+SVC --> SCR : resolved
+deactivate SVC
+SCR -> U : "Expense saved" confirmation,\nform + destination ticks reset
+deactivate SCR
+
+== Real-time fan-out (no polling, no refresh) ==
+FS -->> SCR : onSnapshot → Home/Summary/History update
+FS -->> PEER : onSnapshot(collectionGroup expenses\nwhere groupIds array-contains "g1")
+note over PEER
+  Only fires for groups the author **ticked**.
+  Rules re-check on the peer's read:
+  resource.data.groupIds hasAny callerGroupIds()
+  → the pie chart re-renders on their device.
+end note
+
+@enduml

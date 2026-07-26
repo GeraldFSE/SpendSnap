@@ -1,0 +1,94 @@
+@startuml 05-sequence-join-group
+' SpendSnap — Joining a shared group by invite code, and how the
+' server-side rules constrain the mutation to a self-join.
+
+title SpendSnap — Sequence: Join a Shared Group by Invite Code
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam ArrowColor #475569
+skinparam sequence {
+  ParticipantBackgroundColor #EFF6FF
+  ParticipantBorderColor #2563EB
+  ActorBackgroundColor #F8FAFC
+  LifeLineBorderColor #94A3B8
+  BoxBorderColor #CBD5E1
+  BoxBackgroundColor #F8FAFC
+}
+
+actor "Joiner (Bob)" as U
+box "Client" #F8FAFC
+  participant "GroupScreen" as SCR
+  participant "GroupCard" as CARD
+  participant "services/firebase.js" as SVC
+end box
+box "Server tier — Firebase" #FFFBEB
+  participant "Security Rules" as RULES
+  database "Cloud Firestore" as FS
+end box
+
+U -> SCR : paste invite code (= groupId), tap Join
+activate SCR
+SCR -> SVC : joinGroup(uid, groupId)
+activate SVC
+
+SVC -> SVC : trim code; reject if empty
+SVC -> RULES : setDoc(groups/{groupId},\n{members: {bob: true},\n memberEmails: {bob: "bob@…"}},\n {merge: true})
+activate RULES
+
+RULES -> FS : read existing group document
+FS --> RULES : resource.data
+
+RULES -> RULES : ownerId unchanged?\nchanged keys ⊆ {members, memberEmails}?
+
+alt valid self-join
+  RULES -> RULES : isSelfJoin(members, memberEmails)\n• group is not archived\n• members.diff().affectedKeys().hasOnly([bob])\n• incoming.members[bob] == true\n• bob ∉ existing.members\n• memberEmails.diff().affectedKeys().hasOnly([bob])\n• incoming.memberEmails[bob] is string
+  RULES --> SVC : allow
+else group has been archived by its owner
+  RULES --> SVC : **PERMISSION_DENIED**
+else tries to add or remove someone else,\nrelabel another member's email,\nrename, or change ownerId
+  RULES --> SVC : **PERMISSION_DENIED**
+end
+deactivate RULES
+
+note right of RULES
+  `list` on groups is denied — a group can only be
+  reached by a **known id**, never discovered.
+  A typo'd code fails validation rather than
+  silently creating a bogus group.
+end note
+
+note over RULES, FS
+  There is no blanket "any member may update" branch.
+  Every allowed update is one narrow, self-scoped case:
+  **self-join** · **self-leave** · **own email label** ·
+  **owner rename** (only `name`) · **owner archive**
+  (only `archived` + `archivedAt`).
+end note
+
+SVC -> FS : setDoc(users/bob/settings/groups,\n{ids: arrayUnion(groupId)}, merge)
+FS --> SVC : ok
+SVC --> SCR : groupId
+deactivate SVC
+
+== Everything below happens live, without a refresh ==
+FS -->> SCR : onSnapshot(settings/groups) → groupIds now includes groupId
+SCR -> CARD : render GroupCard(groupId)
+activate CARD
+CARD -> SVC : subscribeToGroup(groupId)
+CARD -> SVC : subscribeToGroupExpenses(groupId)
+SVC -> FS : onSnapshot(collectionGroup("expenses")\nwhere groupIds array-contains groupId\norderBy date desc)
+FS --> CARD : group doc + members + group expenses
+CARD -> SVC : ensureMemberEmail(groupId, uid, email)\n<size:10>backfill for pre-email groups</size>
+CARD -> U : invite code, members by email,\nper-member pie chart, running total
+deactivate CARD
+deactivate SCR
+
+note over CARD
+  **Starts at 0 by design.** An expense carries this
+  groupId only when its author ticks the group while
+  logging it, so joining never exposes Bob's history —
+  past or personal-only spending stays private.
+end note
+
+@enduml

@@ -17,6 +17,9 @@ ios/
 .env.*
 !.env.example
 
+# Downloaded PlantUML jar used by docs/diagrams/render.sh
+docs/diagrams/.cache/
+
 # OS/editor noise
 .DS_Store
 *.swp
