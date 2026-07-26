@@ -43,7 +43,12 @@ loop for each group id
 end
 
 == Logging ==
-U -> SCR : enter amount, pick category
+U -> SCR : enter amount, pick category,\nset the transaction date
+note over SCR
+  Or start with **AI Quick Log**: describe the purchase
+  and a Cloud Function fills these fields in for review.
+  Either way the user confirms before anything is saved.
+end note
 U -> SCR : tick sharing destinations\n("Also show in: …")
 note over SCR
   Sharing is **opt-in per expense**. With nothing
@@ -53,9 +58,10 @@ end note
 U -> SCR : tap Save
 activate SCR
 SCR -> SCR : validate amount > 0
-SCR -> SVC : saveExpense(uid, {amount, category,\nnotes, groupIds: selectedGroupIds})
+SCR -> SVC : saveExpense(uid, {amount, category, notes,\ngroupIds: selectedGroupIds, date})
 activate SVC
 
+SVC -> SVC : date supplied? use it,\nelse serverTimestamp()
 SVC -> RULES : addDoc(users/{uid}/expenses) + ID token
 activate RULES
 RULES -> RULES : create allowed?\nauth.uid == userId && data.userId == userId

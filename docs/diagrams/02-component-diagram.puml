@@ -1,8 +1,8 @@
 @startuml 02-component-diagram
-' SpendSnap — Component / layered architecture of the client.
+' SpendSnap — Component / layered architecture: the client plus the one Cloud Function.
 ' Every arrow corresponds to an actual import in the codebase.
 
-title SpendSnap — Component Diagram (Layered Client Architecture)
+title SpendSnap — Component Diagram (Layered Architecture: client + Cloud Function)
 
 skinparam backgroundColor #FFFFFF
 skinparam shadowing false
@@ -44,7 +44,12 @@ package "2b · Presentation — components/ (reusable, presentational)" as COMPO
 
 package "3 · Service Layer — services/" as SERVICES {
   [firebase.js  «facade»\n<size:11>auth: subscribeToAuthState, signIn/signUp/guest, signOut</size>\n<size:11>expenses: saveExpense, deleteExpense, subscribeToPersonal/GroupExpenses</size>\n<size:11>budget: saveMonthlyBudget, subscribeToMonthlyBudget, checkBudgetAndNotify</size>\n<size:11>groups: create/join/leave/rename/archiveGroup,</size>\n<size:11>subscribeToUserGroups, subscribeToGroup, ensureMemberEmail</size>] as FBSVC
-  [openai.js\n<size:11>parseBankSmsAlert (planned stub)</size>] as OPENAI
+  [openai.js\n<size:11>parseExpenseText — httpsCallable client</size>\n<size:11>validates, then normalises the reply</size>] as OPENAI
+}
+
+package "5 · Cloud Function — functions/ (Node 20, server-side)" as FUNCTIONS {
+  [index.js\n<size:11>onCall handler · auth gate</size>\n<size:11>maps failures to HttpsError</size>] as FNIDX
+  [parser.js\n<size:11>prompt + strict json_schema</size>\n<size:11>normalizeModelResult (pure, tested)</size>] as FNPARSER
 }
 
 package "4 · Pure Utilities — utils/ (no React, no network, unit-tested)" as UTILS {
@@ -53,9 +58,11 @@ package "4 · Pure Utilities — utils/ (no React, no network, unit-tested)" as 
   [expenses.js\n<size:11>aggregation</size>] as EXP
   [budget.js\n<size:11>getBudgetState</size>] as BUD
   [pieMath.js\n<size:11>arc geometry</size>] as PMATH
+  [quickLog.js\n<size:11>local-date + AI result normalisation</size>] as QLOG
 }
 
 cloud "Firebase JS SDK" as SDK
+cloud "OpenAI Responses API" as OPENAIAPI
 
 ' --- Root wiring ---
 APP --> LOGIN
@@ -77,6 +84,11 @@ APP --> FBSVC : auth state
 LOGIN --> FBSVC : sign in / up / guest
 HOME --> FBSVC : personal expenses\n+ budget
 ADD --> FBSVC : saveExpense\n+ subscribeToGroup\n(active destinations)
+ADD --> OPENAI : parseExpenseText\n(AI Quick Log)
+OPENAI ..> QLOG : <<uses>> normalizeQuickLogResult
+OPENAI --> FNIDX : httpsCallable over HTTPS
+FNIDX --> FNPARSER
+FNPARSER --> OPENAIAPI : OpenAI SDK
 SUMMARY --> FBSVC : personal expenses\n+ budget
 HISTORY --> FBSVC : personal expenses\n+ delete
 GROUP --> FBSVC : groups + group expenses\n+ rename / archive (owner)
@@ -98,9 +110,16 @@ note right of SERVICES
   touches exactly one file.
 end note
 
+note right of FUNCTIONS
+  The only server-side code in the repo. It exists
+  because the OpenAI key cannot ship in the bundle.
+  parser.js keeps the prompt and the normalisation
+  pure, so 5 tests cover it with a mocked API.
+end note
+
 note right of UTILS
   Dependency-free ⇒ unit-testable in
-  milliseconds (58 unit tests, no emulator).
+  milliseconds (62 unit tests, no emulator).
   Every layer above may use these — including
   services/, for the budget-alert copy — and
   they depend on nothing app-specific in return.

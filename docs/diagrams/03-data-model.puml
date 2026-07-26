@@ -28,7 +28,7 @@ package "users/{userId}" as USERS #F8FAFC {
     +amount : number  <size:10>SGD</size>
     +category : "Food"|"Transport"|"Shopping"|"Bills"|"Others"
     +notes : string  <size:10>may be ""</size>
-    +date : timestamp  <size:10>serverTimestamp()</size>
+    +date : timestamp  <size:10>serverTimestamp(), or the reviewed Quick Log date</size>
     +userId : string  <size:10>== {userId}; used by collection-group reads</size>
     +groupIds : string[]  <size:10>selected groups this expense appears in ([] = personal-only)</size>
   }

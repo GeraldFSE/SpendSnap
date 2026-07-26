@@ -46,7 +46,9 @@ state "Signed In — AppNavigator" as SignedIn {
   Home : 3 most recent expenses
 
   state "Add Expense" as Add
-  Add : amount + category + notes
+  Add : AI Quick Log: describe it, a Cloud Function
+  Add : pre-fills amount / category / merchant / date
+  Add : amount + category + notes + date (all editable)
   Add : ticks the active groups to share it with
   Add : (personal-only when none are ticked)
 

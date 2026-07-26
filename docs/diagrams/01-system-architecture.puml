@@ -33,8 +33,8 @@ node "Mobile Device (iOS / Android)" as DEVICE {
 
   package "SpendSnap Client (React Native + Expo SDK 54)" as CLIENT {
     component "Presentation Layer\n<size:11>screens/ + components/</size>" as UI
-    component "Service Layer\n<size:11>services/firebase.js</size>\n<size:11>(the only Firebase seam)</size>" as SVC
-    component "Pure Utilities\n<size:11>utils/ — currency, dates,</size>\n<size:11>expenses, budget, pieMath</size>" as UTILS
+    component "Service Layer\n<size:11>services/firebase.js (the only Firebase seam)</size>\n<size:11>services/openai.js (callable-function client)</size>" as SVC
+    component "Pure Utilities\n<size:11>utils/ — currency, dates, expenses,</size>\n<size:11>budget, pieMath, quickLog</size>" as UTILS
   }
 
   component "expo-notifications\n<size:11>local budget alerts</size>" as NOTIF
@@ -47,7 +47,12 @@ cloud "Firebase (BaaS)" as FIREBASE {
   component "Firestore Security Rules\n<size:11>server-enforced authorization</size>\n<size:11>(firestore.rules)</size>" as RULES
   database "Cloud Firestore\n<size:11>document store</size>\n<size:11>users/ , groups/</size>" as FS
   component "Composite Indexes\n<size:11>groupIds ARRAY_CONTAINS + date DESC</size>" as IDX
+
+  component "Cloud Function  parseExpenseText\n<size:11>functions/ — Node 20, asia-southeast1</size>\n<size:11>callable; rejects unauthenticated calls</size>" as FN
+  component "Secret Manager\n<size:11>OPENAI_API_KEY</size>" as SECRET
 }
+
+cloud "OpenAI Responses API\n<size:11>structured JSON (json_schema, strict)</size>" as OPENAI
 
 USER --> UI : taps / gestures
 QA --> UI : "Log Expense" deep link
@@ -65,6 +70,12 @@ RULES --> FS : allow / deny
 FS --> SVC : onSnapshot streams (WebSocket)\nreal-time document changes
 FS ..> IDX : <<uses>> for collection-group queries
 
+SVC --> FN : httpsCallable("parseExpenseText")\nAI Quick Log free text + local date
+FN ..> SECRET : <<reads>> at runtime
+FN --> OPENAI : prompt + strict JSON schema
+OPENAI --> FN : {merchant, amount, category, type, date}
+FN --> SVC : normalised draft (never written directly;\nthe user reviews it, then saves as usual)
+
 note right of RULES
   Authorization is **never** trusted to the client.
   Rules re-evaluate every request against
@@ -75,6 +86,14 @@ note bottom of CLIENT
   Strict one-way dependency:
   presentation → service → backend.
   Utilities depend on nothing app-specific.
+end note
+
+note bottom of FN
+  **Why a function, not a client call.**
+  The OpenAI key would be extractable from the
+  app bundle, so the call moves server-side: the
+  key lives in Secret Manager and the function
+  refuses unauthenticated callers.
 end note
 
 @enduml

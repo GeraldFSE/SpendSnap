@@ -46,6 +46,7 @@ rectangle "SpendSnap" #F8FAFC {
   package "Everyday logging" {
     usecase "Log an expense\n(amount, category, notes)" as UC5
     usecase "Choose sharing\ndestinations" as UC20
+    usecase "AI Quick Log —\ndescribe the purchase" as UC23
     usecase "Log via app-icon\nQuick Action" as UC6
     usecase "Delete an expense\n(long-press)" as UC7
   }
@@ -79,6 +80,7 @@ U --> UC4
 U --> UC5
 U --> UC6
 U --> UC7
+U --> UC23
 U --> UC8
 U --> UC9
 U --> UC10
@@ -98,6 +100,7 @@ O --> UC21
 O --> UC22
 
 UC6 ..> UC5 : <<include>>
+UC23 ..> UC5 : <<include>>
 UC5 ..> UC20 : <<include>>
 UC10 ..> UC11 : <<include>>
 UC14 ..> UC19 : <<include>>
@@ -110,6 +113,11 @@ legend right
   unless its author ticks one or more active groups while
   logging it. Only ticked expenses count toward a group's
   total, so joining never exposes existing spending.
+
+  **AI Quick Log** — a Cloud Function parses the description
+  and pre-fills the form; it never saves anything on its own.
+  The user reviews every field first, and an income-looking
+  description is flagged rather than logged.
 
   **Budget alert** — re-evaluated on every save, but fires
   at most once per threshold per calendar month.

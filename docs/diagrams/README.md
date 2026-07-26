@@ -5,8 +5,8 @@ next to the code they describe and can be re-rendered deterministically.
 
 | # | Diagram | Type | What it answers |
 | --- | --- | --- | --- |
-| 1 | [01-system-architecture.puml](01-system-architecture.puml) | Deployment / component | How the client and the Firebase server tier split, and what crosses the boundary |
-| 2 | [02-component-diagram.puml](02-component-diagram.puml) | Component | The layered client: screens → service → backend, with pure utilities beneath |
+| 1 | [01-system-architecture.puml](01-system-architecture.puml) | Deployment / component | How the client, the Firebase server tier, and the AI Quick Log function split, and what crosses each boundary |
+| 2 | [02-component-diagram.puml](02-component-diagram.puml) | Component | The layered client (screens → service → backend, pure utilities beneath) plus the Cloud Function source |
 | 3 | [03-data-model.puml](03-data-model.puml) | Class | The Firestore document shapes and how expenses are tagged into selected groups |
 | 4 | [04-sequence-add-expense.puml](04-sequence-add-expense.puml) | Sequence | Logging an expense, the budget-alert side effect, real-time fan-out to group members |
 | 5 | [05-sequence-join-group.puml](05-sequence-join-group.puml) | Sequence | Joining by invite code, and how the rules constrain it to a self-join |
