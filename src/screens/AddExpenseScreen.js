@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,13 +16,20 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { saveExpense, subscribeToGroup } from "../services/firebase";
+import { parseExpenseText } from "../services/openai";
+import { formatLocalDate, parseLocalDate, QUICK_LOG_CATEGORIES } from "../utils/quickLog";
 
-const CATEGORIES = ["Food", "Transport", "Shopping", "Bills", "Others"];
+const CATEGORIES = QUICK_LOG_CATEGORIES;
 
 export default function AddExpenseScreen({ user, groupIds }) {
+  const [quickLogText, setQuickLogText] = useState("");
+  const [parsingQuickLog, setParsingQuickLog] = useState(false);
+  const [quickLogMessage, setQuickLogMessage] = useState("");
+  const [parsedType, setParsedType] = useState(null);
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [category, setCategory] = useState("");
   const [notes, setNotes] = useState("");
+  const [transactionDate, setTransactionDate] = useState(() => formatLocalDate());
   const [groupsById, setGroupsById] = useState({});
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -84,11 +92,88 @@ export default function AddExpenseScreen({ user, groupIds }) {
     );
   }
 
+  async function handleQuickLog() {
+    const text = quickLogText.trim();
+
+    if (!text) {
+      setQuickLogMessage("Describe a purchase first, or use the manual fields below.");
+      return;
+    }
+
+    try {
+      setParsingQuickLog(true);
+      setQuickLogMessage("");
+      setParsedType(null);
+
+      const result = await parseExpenseText(text);
+      const appliedFields = [];
+
+      if (result.amount !== null) {
+        appliedFields.push("amount");
+      }
+
+      if (result.category) {
+        appliedFields.push("category");
+      }
+
+      if (result.merchant) {
+        appliedFields.push("merchant");
+      }
+
+      if (result.date) {
+        appliedFields.push("date");
+      }
+
+      setAmount(result.amount !== null ? String(result.amount) : "");
+      setCategory(result.category ?? "");
+      setNotes(result.merchant ?? "");
+      setTransactionDate(result.date ?? "");
+      setParsedType(result.type);
+
+      if (result.type === "income") {
+        setQuickLogMessage(
+          "This looks like income. SpendSnap currently saves expenses only, so review it without submitting as spending."
+        );
+      } else if (result.message) {
+        setQuickLogMessage(result.message);
+      } else if (appliedFields.length > 0) {
+        setQuickLogMessage(`Filled ${appliedFields.join(", ")}. Review everything before saving.`);
+      } else {
+        setQuickLogMessage("I couldn't confidently extract details. Continue with the manual fields below.");
+      }
+    } catch (error) {
+      console.warn("Unable to parse Quick Log text.", error);
+      setParsedType(null);
+      setQuickLogMessage("Quick Log is unavailable right now. You can still enter the expense manually below.");
+    } finally {
+      setParsingQuickLog(false);
+    }
+  }
+
   async function handleSubmit() {
     const parsedAmount = Number(amount);
+    const parsedDate = parseLocalDate(transactionDate);
+
+    if (parsedType === "income") {
+      Alert.alert(
+        "Income detected",
+        "SpendSnap currently tracks expenses only. Edit the amount to continue as a manual expense."
+      );
+      return;
+    }
 
     if (!amount.trim() || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("Invalid amount", "Enter a valid expense amount.");
+      return;
+    }
+
+    if (!CATEGORIES.includes(category)) {
+      Alert.alert("Category required", "Choose an expense category.");
+      return;
+    }
+
+    if (!parsedDate) {
+      Alert.alert("Invalid date", "Enter the transaction date as YYYY-MM-DD.");
       return;
     }
 
@@ -99,13 +184,18 @@ export default function AddExpenseScreen({ user, groupIds }) {
         amount: parsedAmount,
         category,
         notes,
-        groupIds: selectedGroupIds
+        groupIds: selectedGroupIds,
+        date: parsedDate
       });
 
       // Reset the form after Firestore confirms the write.
+      setQuickLogText("");
+      setQuickLogMessage("");
+      setParsedType(null);
       setAmount("");
-      setCategory(CATEGORIES[0]);
+      setCategory("");
       setNotes("");
+      setTransactionDate(formatLocalDate());
       setSelectedGroupIds([]);
       setConfirmation("Expense saved.");
       setTimeout(() => setConfirmation(""), 2200);
@@ -123,11 +213,87 @@ export default function AddExpenseScreen({ user, groupIds }) {
         style={styles.container}
         behavior={Platform.select({ ios: "padding", android: undefined })}
       >
-        <View style={styles.form}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.quickLogCard}>
+            <View style={styles.quickLogHeading}>
+              <View style={styles.quickLogIcon}>
+                <Ionicons name="sparkles" size={18} color="#7C3AED" />
+              </View>
+              <View style={styles.quickLogHeadingText}>
+                <Text style={styles.quickLogTitle}>AI Quick Log</Text>
+                <Text style={styles.quickLogSubtitle}>Describe it naturally, then review the filled form.</Text>
+              </View>
+            </View>
+
+            <TextInput
+              value={quickLogText}
+              onChangeText={setQuickLogText}
+              placeholder="Lunch at McDonald's $12.80"
+              multiline
+              maxLength={500}
+              style={[styles.input, styles.quickLogInput]}
+              testID="quick-log-input"
+            />
+
+            <Pressable
+              onPress={handleQuickLog}
+              disabled={parsingQuickLog}
+              style={({ pressed }) => [
+                styles.quickLogButton,
+                pressed && !parsingQuickLog ? styles.quickLogButtonPressed : null,
+                parsingQuickLog ? styles.submitButtonDisabled : null
+              ]}
+            >
+              {parsingQuickLog ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="sparkles-outline" size={17} color="#FFFFFF" />
+                  <Text style={styles.quickLogButtonText}>Fill expense with AI</Text>
+                </>
+              )}
+            </Pressable>
+
+            {quickLogMessage ? (
+              <View style={styles.quickLogMessage}>
+                <Ionicons
+                  name={parsedType === "income" ? "information-circle-outline" : "checkmark-circle-outline"}
+                  size={18}
+                  color={parsedType === "income" ? "#B45309" : "#166534"}
+                />
+                <Text
+                  style={[
+                    styles.quickLogMessageText,
+                    parsedType === "income" ? styles.quickLogIncomeMessage : null
+                  ]}
+                >
+                  {quickLogMessage}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.sectionDivider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>Review or enter manually</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <View style={styles.form}>
           <Text style={styles.label}>Amount</Text>
           <TextInput
             value={amount}
-            onChangeText={setAmount}
+            onChangeText={(value) => {
+              setAmount(value);
+              if (parsedType === "income") {
+                setParsedType(null);
+                setQuickLogMessage("Income detection cleared. Review this carefully before saving as an expense.");
+              }
+            }}
             placeholder="0.00"
             keyboardType="decimal-pad"
             style={styles.input}
@@ -141,7 +307,9 @@ export default function AddExpenseScreen({ user, groupIds }) {
             }}
             style={({ pressed }) => [styles.categoryField, pressed ? styles.categoryFieldPressed : null]}
           >
-            <Text style={styles.categoryText}>{category}</Text>
+            <Text style={[styles.categoryText, !category ? styles.categoryPlaceholder : null]}>
+              {category || "Choose category"}
+            </Text>
             <Text style={styles.categoryChevron}>Change</Text>
           </Pressable>
 
@@ -152,6 +320,17 @@ export default function AddExpenseScreen({ user, groupIds }) {
             placeholder="Optional"
             multiline
             style={[styles.input, styles.notesInput]}
+          />
+
+          <Text style={styles.label}>Transaction date</Text>
+          <TextInput
+            value={transactionDate}
+            onChangeText={setTransactionDate}
+            placeholder="YYYY-MM-DD"
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={10}
+            style={styles.input}
           />
 
           <Text style={styles.label}>Sharing</Text>
@@ -210,7 +389,8 @@ export default function AddExpenseScreen({ user, groupIds }) {
               <Text style={styles.submitText}>Submit</Text>
             )}
           </Pressable>
-        </View>
+          </View>
+        </ScrollView>
 
         <Modal
           animationType="fade"
@@ -255,11 +435,106 @@ export default function AddExpenseScreen({ user, groupIds }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8FAFC",
-    padding: 16
+    backgroundColor: "#F8FAFC"
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32
   },
   form: {
     gap: 10
+  },
+  quickLogCard: {
+    backgroundColor: "#F5F3FF",
+    borderColor: "#DDD6FE",
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14
+  },
+  quickLogHeading: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10
+  },
+  quickLogIcon: {
+    alignItems: "center",
+    backgroundColor: "#EDE9FE",
+    borderRadius: 20,
+    height: 36,
+    justifyContent: "center",
+    width: 36
+  },
+  quickLogHeadingText: {
+    flex: 1
+  },
+  quickLogTitle: {
+    color: "#4C1D95",
+    fontSize: 17,
+    fontWeight: "800"
+  },
+  quickLogSubtitle: {
+    color: "#6D28D9",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2
+  },
+  quickLogInput: {
+    minHeight: 72,
+    textAlignVertical: "top"
+  },
+  quickLogButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#7C3AED",
+    borderRadius: 8,
+    flexDirection: "row",
+    gap: 7,
+    minHeight: 42,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  quickLogButtonPressed: {
+    backgroundColor: "#6D28D9"
+  },
+  quickLogButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  quickLogMessage: {
+    alignItems: "flex-start",
+    backgroundColor: "#F0FDF4",
+    borderRadius: 8,
+    flexDirection: "row",
+    gap: 8,
+    padding: 10
+  },
+  quickLogMessageText: {
+    color: "#166534",
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18
+  },
+  quickLogIncomeMessage: {
+    color: "#92400E"
+  },
+  sectionDivider: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    marginVertical: 18
+  },
+  dividerLine: {
+    backgroundColor: "#CBD5E1",
+    flex: 1,
+    height: 1
+  },
+  dividerText: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "700"
   },
   label: {
     color: "#334155",
@@ -295,6 +570,10 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     fontSize: 16,
     fontWeight: "600"
+  },
+  categoryPlaceholder: {
+    color: "#94A3B8",
+    fontWeight: "500"
   },
   categoryChevron: {
     color: "#2563EB",
