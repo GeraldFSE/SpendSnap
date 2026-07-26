@@ -99,6 +99,7 @@ Those stories map onto the following use cases:
 
 - **Authentication** — email/password sign-up and sign-in, plus anonymous ("guest") sign-in, backed by Firebase Auth with persistence across app restarts (AsyncStorage).
 - **Manual expense logging** — amount, category (Food, Transport, Shopping, Bills, Others), optional notes, and an optional group destination.
+- **AI Quick Log** — describe a transaction naturally (for example, `Lunch at McDonald's $12.80`) and an authenticated Firebase Cloud Function uses OpenAI structured output to prefill the existing form for review. It never auto-saves.
 - **Home dashboard** — month-to-date total, today's spend, transaction count, an at-a-glance budget progress bar, quick navigation actions, and the three most recent expenses.
 - **Set / edit monthly budget from anywhere** — a modal on both the Home and Summary tabs; the budget syncs live across the app.
 - **Budget alerts** — local notifications fire automatically the first time you cross 80% and 100% of your monthly budget within a calendar month (de-duplicated per month).
@@ -111,7 +112,7 @@ Those stories map onto the following use cases:
 
 ### Planned / placeholder
 
-- **Automatic SMS parsing (Milestone 3)** — `src/services/openai.js` contains a stub (`parseBankSmsAlert`) for an AI-assisted parser that would extract amount/merchant/category from bank SMS alerts. It is intentionally a no-op placeholder; in production the OpenAI key must live behind a server, not in the client bundle.
+- **Automatic SMS capture** — intentionally deferred because background message access is platform-sensitive. Quick Log provides the cross-platform, Expo Go-compatible AI entry path.
 
 ---
 
@@ -431,10 +432,16 @@ SpendSnap has no REST API; instead, **`src/services/firebase.js` is the applicat
 
 | Function | Description |
 | --- | --- |
-| `saveExpense(userId, { amount, category, notes, groupIds })` | Adds an expense to the user's subcollection, stamped with `serverTimestamp()` and the supplied `groupIds`. Then runs `checkBudgetAndNotify`. |
+| `saveExpense(userId, { amount, category, notes, groupIds, date })` | Adds an expense to the user's subcollection with the reviewed transaction date and supplied `groupIds`. Then runs `checkBudgetAndNotify`. |
 | `deleteExpense(userId, expenseId)` | Deletes one of the user's expenses. |
 | `subscribeToPersonalExpenses(userId, onExpenses, onError)` | Live stream of the user's **own** expenses, newest first. Powers Home, Summary, History. |
 | `subscribeToGroupExpenses(groupId, onExpenses, onError)` | Collection-group live stream of **all** expenses tagged with `groupId`. Powers the group pie charts. |
+
+### AI Quick Log
+
+| Function | Description |
+| --- | --- |
+| `parseExpenseText(description)` | Calls the authenticated `parseExpenseText` Firebase callable function and normalizes its structured result for the review form. |
 
 ### Budget & alerts
 
@@ -509,6 +516,7 @@ These rules are validated by the emulator-backed system tests in `system-tests/`
 - **npm** (bundled with Node).
 - **Expo Go** app on a physical iOS/Android device, *or* an iOS Simulator / Android Emulator.
 - A **Firebase project** with **Authentication** (Email/Password + Anonymous enabled) and **Cloud Firestore** provisioned.
+- A Firebase plan that supports Cloud Functions, plus an **OpenAI API account** for AI Quick Log.
 - **firebase-tools** (the Firebase CLI) — required only for deploying rules/indexes and for running the system tests against the emulator. Install with `npm i -g firebase-tools`.
 - **JDK 21 or newer** for the Firestore Emulator used by `npm run test:system`. Recent `firebase-tools` versions no longer support older Java runtimes.
 
@@ -525,6 +533,7 @@ cd SpendSnap
 #    (A peer-dependency mismatch between firebase and async-storage means npm's
 #     strict resolver needs the legacy flag.)
 npm install --legacy-peer-deps
+npm --prefix functions install
 
 # 3. Create your environment file
 cp .env.example .env
@@ -552,11 +561,16 @@ All configuration is supplied through **Expo public environment variables** (the
 | `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase storage bucket |
 | `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Firebase messaging sender id |
 | `EXPO_PUBLIC_FIREBASE_APP_ID` | Firebase app id |
-| `EXPO_PUBLIC_OPENAI_API_KEY` | (Optional, **planned feature**) key for the SMS-parsing stub. Do **not** ship a real key in a production client bundle. |
-
 These are read in `src/services/firebase.js` to construct the Firebase config. Project-level app configuration (name, bundle ids, plugins) lives in `app.json`.
 
 > **Security note:** `EXPO_PUBLIC_*` values are embedded in the app bundle and are not secret. Firebase web API keys are designed to be public — your data is protected by **Security Rules**, not by hiding the key. Genuinely secret keys (like OpenAI) must live behind a server.
+
+Configure the OpenAI key as a Firebase Functions secret; never add it to `.env`:
+
+```bash
+firebase functions:secrets:set OPENAI_API_KEY
+firebase deploy --only functions:parseExpenseText
+```
 
 ---
 
@@ -589,12 +603,13 @@ If Expo hangs on start, confirm your Node version is an LTS release (20 or 22).
 
 ## 14. Testing
 
-SpendSnap ships with **98 automated tests** across three categories, reflecting a deliberate testing pyramid: many fast unit tests, a layer of component tests, and a focused set of system tests.
+SpendSnap ships with **110 automated tests** across four categories, reflecting a deliberate testing pyramid: many fast unit tests, component tests, mocked Cloud Function parser tests, and focused Firestore system tests.
 
 | Suite | Runner | What it covers | Count |
 | --- | --- | --- | --- |
-| **Unit** | Jest (node) | Pure logic in `utils/`: currency, dates, expenses, budget, pie geometry | 58 |
-| **Component** | Jest + RNTL | `ExpenseItem`, `PieChart`, `HomeScreen` (service + navigation mocked) | 15 |
+| **Unit** | Jest (node) | Pure logic in `utils/`: currency, dates, expenses, budget, pie geometry, Quick Log normalization | 62 |
+| **Component** | Jest + RNTL | `ExpenseItem`, `PieChart`, `HomeScreen`, `AddExpenseScreen` (services mocked) | 18 |
+| **Function** | `node:test` | OpenAI structured-result normalization using mocked Responses API output | 5 |
 | **System** | `node:test` + Firestore Emulator | Security rules and data-model behaviour end-to-end | 25 |
 
 ### Commands
@@ -603,6 +618,9 @@ SpendSnap ships with **98 automated tests** across three categories, reflecting 
 # Unit + component tests (fast; no emulator needed)
 npm test
 npm run test:watch        # watch mode
+
+# Cloud Function parser tests (OpenAI is mocked; no API usage)
+npm run test:functions
 
 # System tests — spins up the Firestore Emulator automatically
 npm run test:system
@@ -669,7 +687,7 @@ SpendSnap/
 │   │   └── CategoryPicker.js
 │   ├── services/                 # The only modules that talk to external services
 │   │   ├── firebase.js           # Firebase init + the app's internal data API
-│   │   └── openai.js             # SMS-parsing stub (planned feature)
+│   │   └── openai.js             # authenticated AI Quick Log callable client
 │   ├── utils/                    # Pure, dependency-free logic (unit-tested)
 │   │   ├── currency.js           # SGD formatting
 │   │   ├── dates.js              # timestamp coercion, period math, range keys
@@ -677,6 +695,11 @@ SpendSnap/
 │   │   ├── budget.js             # budget status/colour/detail derivation
 │   │   └── pieMath.js            # SVG arc geometry + slice computation
 │   └── **/__tests__/             # Co-located unit & component tests
+│
+├── functions/
+│   ├── src/index.js               # authenticated Firebase callable + secret binding
+│   ├── src/parser.js              # OpenAI structured extraction + normalization
+│   └── test/parser.test.js        # mocked OpenAI parser tests
 │
 └── system-tests/
     └── firestore.test.mjs        # Emulator-backed security-rule & data-model tests
@@ -690,10 +713,12 @@ This layout makes the architecture legible at a glance: `services/` is the backe
 
 SpendSnap is a client app plus Firebase configuration; "deployment" has two independent parts.
 
-### 1. The backend configuration (rules + indexes)
+### 1. The backend configuration (rules, indexes, and Quick Log)
 
 ```bash
 firebase deploy --only firestore:rules,firestore:indexes
+firebase functions:secrets:set OPENAI_API_KEY
+firebase deploy --only functions:parseExpenseText
 ```
 
 This publishes the authorization rules and the composite index to your Firebase project. **Deploy rules whenever they change** — the app's group queries will fail with `permission-denied` until the matching rules are live.
@@ -721,7 +746,7 @@ There is no CI pipeline committed yet. A natural setup (see [Roadmap](#17-roadma
 
 ### Roadmap
 
-- **Milestone 3: Automatic SMS parsing** with an AI-assisted extractor (`openai.js` stub today). Must be fronted by a server/Cloud Function so the API key is never shipped.
+- **Optional message/screenshot ingestion** feeding the existing AI Quick Log parser, after platform permissions and privacy are validated.
 - **CSV / data export** of expenses and summaries.
 - **Recurring expenses** and per-category budgets.
 - **CI pipeline** (lint + unit/component + emulator system tests on every PR).

@@ -11,8 +11,9 @@
     "test": "jest",
     "test:unit": "jest",
     "test:watch": "jest --watch",
+    "test:functions": "npm --prefix functions test",
     "test:system": "firebase emulators:exec --only firestore \"node --test system-tests/firestore.test.mjs\"",
-    "test:all": "jest && npm run test:system"
+    "test:all": "jest && npm run test:functions && npm run test:system"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

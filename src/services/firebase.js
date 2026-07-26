@@ -76,6 +76,7 @@ function requireUserId(userId) {
   }
 }
 
+export const firebaseApp = app;
 export const db = getFirestore(app);
 export const auth = initializeFirebaseAuth();
 
@@ -122,12 +123,13 @@ export async function signOutUser() {
   return signOut(auth);
 }
 
-export async function saveExpense(userId, { amount, category, notes, groupIds }) {
+export async function saveExpense(userId, { amount, category, notes, groupIds, date }) {
+  const transactionDate = date instanceof Date && !Number.isNaN(date.getTime()) ? date : serverTimestamp();
   const savedExpense = await addDoc(getExpensesRef(userId), {
     amount: Number(amount),
     category,
     notes: notes?.trim() ?? "",
-    date: serverTimestamp(),
+    date: transactionDate,
     userId,
     // Every expense stays in the author's personal history; selected group ids make it
     // visible in those shared budgets too. Empty means personal-only.

@@ -1,15 +1,30 @@
-const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { auth, firebaseApp } from "./firebase";
+import { formatLocalDate, normalizeQuickLogResult } from "../utils/quickLog";
 
-export async function parseBankSmsAlert(smsText) {
-  if (!smsText?.trim()) {
-    throw new Error("SMS text is required.");
+const functions = getFunctions(firebaseApp, "asia-southeast1");
+const callParseExpenseText = httpsCallable(functions, "parseExpenseText", {
+  timeout: 25000
+});
+
+export async function parseExpenseText(description) {
+  const text = description?.trim();
+
+  if (!text) {
+    throw new Error("Enter an expense description.");
   }
 
-  if (!OPENAI_API_KEY) {
-    throw new Error("Missing EXPO_PUBLIC_OPENAI_API_KEY.");
+  if (text.length > 500) {
+    throw new Error("Keep the description under 500 characters.");
   }
 
-  // Placeholder for the future SMS parsing feature.
-  // For production, prefer calling a backend so the OpenAI key is not shipped in the app.
-  return null;
+  if (!auth.currentUser) {
+    throw new Error("Sign in before using Quick Log.");
+  }
+
+  const response = await callParseExpenseText({
+    text,
+    today: formatLocalDate()
+  });
+  return normalizeQuickLogResult(response.data);
 }
