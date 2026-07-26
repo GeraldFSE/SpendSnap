@@ -8,7 +8,7 @@ SpendSnap helps people log expenses in a few taps, understand where their money 
 ![Expo SDK](https://img.shields.io/badge/Expo%20SDK-54-000020)
 ![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-FFCA28)
-![Tests](https://img.shields.io/badge/tests-98%20passing-16A34A)
+![Tests](https://img.shields.io/badge/tests-110%20passing-16A34A)
 ![License](https://img.shields.io/badge/license-not%20set-lightgrey)
 
 ---
@@ -118,19 +118,47 @@ Those stories map onto the following use cases:
 
 ## 4. Screenshots / Demo
 
-> Screenshots/GIFs are not yet committed to the repository. To capture your own, run the app (see [Running Locally](#13-usage--running-locally)) and use the simulator's screenshot tools.
+### AI Quick Log
 
-Suggested shots to capture for documentation:
+The flow worth showing first: describe a purchase in one line, and the `parseExpenseText` Cloud Function fills the form in for review. Nothing is written until you confirm.
 
-```
-docs/
-  screenshots/
-    home.png            # dashboard + budget bar
-    add-expense.png     # category modal open
-    summary.png         # weekly bar chart
-    history.png         # filters + category breakdown
-    group.png           # group card expanded, pie chart + drilldown
-```
+| Describe the purchase | Review the pre-filled draft |
+| --- | --- |
+| ![AI Quick Log with the description "i ate $4 of chicken rice at upper thomson" typed in](docs/screenshots/quick-log-input.png) | ![The Add Expense form pre-filled with amount 4, category Food, the merchant in the notes field, and today's date](docs/screenshots/quick-log-filled.png) |
+
+<sub>"i ate $4 of chicken rice at upper thomson" becomes amount **4**, category **Food**, merchant **upper thomson** in the notes, and the transaction date — every field still editable before you submit.</sub>
+
+### Core screens
+
+![Home dashboard: month-to-date total, today's spend, budget progress bar and recent expenses](docs/screenshots/home.png)
+
+<sub>**Home** — month-to-date total, today's spend, the budget progress bar, and the three most recent expenses.</sub>
+
+![Add Expense form showing amount, category, notes, transaction date and the group sharing tickboxes](docs/screenshots/add-expense.png)
+
+<sub>**Add Expense** — the form itself: amount, category, notes, an editable transaction date, and the "Also show in" tickboxes that decide whether the expense stays personal or joins a shared budget. Every field is editable whether you typed it or Quick Log filled it.</sub>
+
+![Spending summary on the Daily tab: budget progress card and the last-7-days bar chart](docs/screenshots/summary.png)
+
+<sub>**Summary** — the Daily tab: the monthly budget card (here at 94%, "Nearing monthly budget") above a last-7-days trend chart with current period, average and peak. Weekly and Monthly tabs show the same shape over 6 weeks / 6 months.</sub>
+
+![History list with period filters and the category breakdown chart](docs/screenshots/history.png)
+
+<sub>**History** — Today / This Week / This Month / All Time filters and the category breakdown.</sub>
+
+![Expanded group card showing collapsible invite code and members sections, a per-member spending pie chart and the group total](docs/screenshots/group.png)
+
+<sub>**Shared budget** — an expanded group card: collapsible invite-code and member sections, the per-member pie chart labelled by email, and the running group total. Tap a slice for that member's category breakdown. The group's owner also sees rename and archive controls here.</sub>
+
+### Capturing them
+
+Run the app (see [Running Locally](#13-usage--running-locally)), then:
+
+- **iOS Simulator** — `⌘S`, or `xcrun simctl io booted screenshot docs/screenshots/home.png`.
+- **Android Emulator** — the camera button in the toolbar, or `adb exec-out screencap -p > docs/screenshots/home.png`.
+- **Physical device** — the usual hardware shortcut, then AirDrop / copy the file across.
+
+A short GIF of the Quick Log round trip (typing → parsed form) is the single most convincing artefact for a demo or poster; `xcrun simctl io booted recordVideo` captures the video, and any converter turns it into a GIF.
 
 There is no hosted web demo. SpendSnap is a native mobile app; the fastest way to try it is via **Expo Go** with a QR code (see below).
 
@@ -163,6 +191,9 @@ There is no hosted web demo. SpendSnap is a native mobile app; the fastest way t
 | Authentication | **Firebase Authentication** (`@firebase/auth`) |
 | Database | **Cloud Firestore** (`@firebase/firestore`) — document store with real-time listeners |
 | Authorization | **Firestore Security Rules** (server-enforced) |
+| Server-side logic | **Cloud Functions for Firebase** (Node 20, `asia-southeast1`) — one callable, `parseExpenseText` |
+| AI parsing | **OpenAI Responses API** with a strict `json_schema`, called only from the function |
+| Secrets | **Secret Manager** via `defineSecret` — the OpenAI key never reaches the client |
 | SDK | **firebase** v10.14 |
 
 ### Testing & quality
@@ -184,7 +215,7 @@ This section is the heart of the document. SpendSnap is deliberately built to sh
 
 SpendSnap follows a classic **client–server** model. The mobile app is the client; **Firebase acts as the server tier** (a managed *Backend-as-a-Service*, or BaaS). There is no bespoke application server to write, deploy, or scale — Firebase provides authentication, a real-time database, and a server-side authorization engine out of the box.
 
-![System architecture: the Expo client, its three internal layers, and the Firebase server tier](docs/diagrams/png/01-system-architecture.png)
+![System architecture: the Expo client and its three internal layers, the Firebase server tier, and the Cloud Function that brokers the OpenAI call](docs/diagrams/png/01-system-architecture.png)
 
 <sub>Source: [`docs/diagrams/01-system-architecture.puml`](docs/diagrams/01-system-architecture.puml) · [SVG](docs/diagrams/svg/01-system-architecture.svg)</sub>
 
@@ -664,11 +695,12 @@ SpendSnap/
 ├── .env.example                 # Template for required environment variables
 │
 ├── docs/
-│   └── diagrams/                # PlantUML design diagrams (see §6.8)
-│       ├── *.puml               # Sources — the diagrams of record
-│       ├── png/                 # Rendered for the README
-│       ├── svg/                 # Rendered for slides/printing
-│       └── render.sh            # Regenerates png/ and svg/
+│   ├── diagrams/                # PlantUML design diagrams (see §6.8)
+│   │   ├── *.puml               # Sources — the diagrams of record
+│   │   ├── png/                 # Rendered for the README
+│   │   ├── svg/                 # Rendered for slides/printing
+│   │   └── render.sh            # Regenerates png/ and svg/
+│   └── screenshots/             # App captures embedded in §4
 │
 ├── src/
 │   ├── navigation/
