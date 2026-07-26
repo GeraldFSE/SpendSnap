@@ -84,9 +84,13 @@ NAV --> FBSVC : subscribeToUserGroups
 FBSVC --> SDK : the ONLY module\nimporting firebase/*
 
 ' --- Pure logic is reachable from every layer, and depends on none of them ---
-SCREENS ..> UTILS : <<uses>> summarize, format, period math
-COMPONENTS ..> UTILS : <<uses>> formatCurrency, arcPath
-SERVICES ..> UTILS : <<uses>> formatCurrency
+' Drawn node-to-node on purpose: a package-to-package dependency makes Graphviz route
+' the edge around the whole cluster, which reads as a stray boundary.
+' One representative edge per layer keeps the point without redrawing every import.
+SUMMARY ..> EXP : <<uses>> summarize
+HISTORY ..> DATES : <<uses>> period math
+ITEM ..> CUR : <<uses>> formatCurrency
+PIE ..> PMATH : <<uses>> arcPath
 
 note right of SERVICES
   Single seam for change: swapping the
@@ -97,6 +101,10 @@ end note
 note right of UTILS
   Dependency-free ⇒ unit-testable in
   milliseconds (58 unit tests, no emulator).
+  Every layer above may use these — including
+  services/, for the budget-alert copy — and
+  they depend on nothing app-specific in return.
+  Only representative edges are drawn.
 end note
 
 note right of COMPONENTS

@@ -25,12 +25,16 @@ README and reports, [`svg/`](svg) for slides and printing (scales without blurri
 ```
 
 The script downloads `plantuml.jar` into a git-ignored `.cache/` on first run; it needs a
-JDK. Graphviz is optional — if `dot` is not installed, PlantUML's built-in Smetana layout
-engine is used instead. For nicer layouts:
+JDK. It also needs Graphviz for the non-sequence diagrams:
 
 ```bash
 brew install graphviz
 ```
+
+The committed images were rendered with Graphviz, which is also what
+plantuml.com uses — so what you see here is what these sources look like anywhere else.
+Without `dot` the script still works, falling back to PlantUML's built-in Smetana engine,
+but the layouts differ and are generally worse.
 
 Alternatives to the script: the **PlantUML** extension for VS Code (Alt+D previews the file
 under the cursor), or pasting a `.puml` file into <https://www.plantuml.com/plantuml>.
@@ -47,3 +51,14 @@ under the cursor), or pasting a `.puml` file into <https://www.plantuml.com/plan
 - Prefer a `legend` block over many `note`s on a crowded diagram — notes anchor to their
   element and drag long leader lines across the layout.
 - Keep each diagram answering **one** question; add a new file rather than overloading one.
+
+Three habits that keep the layouts readable, learned the hard way on `07-use-case.puml`:
+
+- **Never draw a package-to-package dependency.** Graphviz routes it around the entire
+  cluster, and the result reads as a stray boundary floating over the diagram. Pick one
+  representative node in each package and connect those instead.
+- **Drop an actor association when an `<<include>>` already reaches the use case**, and
+  avoid `<<include>>` edges that cross package boundaries. Both stretch single edges across
+  the whole canvas. State what you dropped in the legend.
+- **Long parenthetical labels set the width** of their package and therefore of everything
+  around it. Move the detail into the legend and keep the bubble short.

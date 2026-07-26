@@ -2,6 +2,10 @@
 ' SpendSnap — Use cases, mapped to the user stories in the README.
 ' Actors are generalised: everything a signed-in user can do sits on the base actor,
 ' and each specialised actor adds only what is unique to it.
+'
+' Layout notes: an actor association is omitted where an <<include>> already reaches the
+' use case, and no <<include>> crosses between packages — both drag long edges across the
+' whole canvas. Anything dropped for that reason is stated in the legend instead.
 
 ' The trailing \n keeps the title clear of the diagram frame, which Smetana
 ' otherwise draws flush against it.
@@ -41,7 +45,7 @@ rectangle "SpendSnap" #F8FAFC {
 
   package "Everyday logging" {
     usecase "Log an expense\n(amount, category, notes)" as UC5
-    usecase "Choose sharing destinations\n(personal-only, or tick groups)" as UC20
+    usecase "Choose sharing\ndestinations" as UC20
     usecase "Log via app-icon\nQuick Action" as UC6
     usecase "Delete an expense\n(long-press)" as UC7
   }
@@ -84,7 +88,6 @@ U --> UC14
 U --> UC15
 U --> UC16
 U --> UC18
-U --> UC20
 
 ' Only what each specialised actor adds.
 R --> UC1
@@ -96,7 +99,6 @@ O --> UC22
 
 UC6 ..> UC5 : <<include>>
 UC5 ..> UC20 : <<include>>
-UC5 ..> UC13 : <<include>>\nevaluated on every save
 UC10 ..> UC11 : <<include>>
 UC14 ..> UC19 : <<include>>
 UC16 ..> UC17 : <<extend>>
@@ -104,11 +106,13 @@ UC16 ..> UC17 : <<extend>>
 legend right
   **Rules that shape these use cases**
   ----
-  **Budget alert** — fires at most once per threshold
-  per calendar month (de-duplicated).
+  **Sharing destinations** — an expense is personal-only
+  unless its author ticks one or more active groups while
+  logging it. Only ticked expenses count toward a group's
+  total, so joining never exposes existing spending.
 
-  **Group totals** — count only the expenses whose author
-  explicitly ticked that group while logging them.
+  **Budget alert** — re-evaluated on every save, but fires
+  at most once per threshold per calendar month.
 
   **Archive** — a soft delete: the group leaves every
   member's active list and its invite code stops working.

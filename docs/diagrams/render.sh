@@ -46,7 +46,9 @@ else
   SOURCES=(*.puml)
 fi
 
-java -jar "$JAR" "${LAYOUT[@]}" -tpng -o png "${SOURCES[@]}"
-java -jar "$JAR" "${LAYOUT[@]}" -tsvg -o svg "${SOURCES[@]}"
+# ${arr[@]+"${arr[@]}"} — macOS ships bash 3.2, where expanding an empty array under
+# `set -u` is an "unbound variable" error. LAYOUT is empty whenever Graphviz is used.
+java -jar "$JAR" ${LAYOUT[@]+"${LAYOUT[@]}"} -tpng -o png "${SOURCES[@]}"
+java -jar "$JAR" ${LAYOUT[@]+"${LAYOUT[@]}"} -tsvg -o svg "${SOURCES[@]}"
 
 echo "Done: png/ and svg/ updated."
