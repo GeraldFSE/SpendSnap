@@ -124,7 +124,17 @@ export default function AppNavigator({ onSignOut, user }) {
           {() => <HomeScreen onSignOut={onSignOut} user={user} />}
         </Tab.Screen>
         <Tab.Screen name="Add Expense">
-          {() => <AddExpenseScreen user={user} groupIds={groupIds} />}
+          {({ route, navigation }) => (
+            <AddExpenseScreen
+              user={user}
+              groupIds={groupIds}
+              editingExpense={route.params?.expense ?? null}
+              onEditComplete={() => {
+                navigation.setParams({ expense: undefined });
+                navigation.navigate("History");
+              }}
+            />
+          )}
         </Tab.Screen>
         <Tab.Screen name="Summary">
           {() => <SpendingSummaryScreen user={user} />}

@@ -15,13 +15,18 @@ import {
   View
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { saveExpense, subscribeToGroup } from "../services/firebase";
+import { saveExpense, subscribeToGroup, updateExpense } from "../services/firebase";
 import { parseExpenseText } from "../services/openai";
 import { formatLocalDate, parseLocalDate, QUICK_LOG_CATEGORIES } from "../utils/quickLog";
 
 const CATEGORIES = QUICK_LOG_CATEGORIES;
 
-export default function AddExpenseScreen({ user, groupIds }) {
+function expenseDateForForm(expense) {
+  const date = expense?.date?.toDate ? expense.date.toDate() : expense?.date;
+  return date instanceof Date && !Number.isNaN(date.getTime()) ? formatLocalDate(date) : formatLocalDate();
+}
+
+export default function AddExpenseScreen({ user, groupIds, editingExpense = null, onEditComplete }) {
   const [quickLogText, setQuickLogText] = useState("");
   const [parsingQuickLog, setParsingQuickLog] = useState(false);
   const [quickLogMessage, setQuickLogMessage] = useState("");
@@ -41,6 +46,19 @@ export default function AddExpenseScreen({ user, groupIds }) {
     [groupIdList, groupsById]
   );
   const activeGroupIds = useMemo(() => activeGroups.map((group) => group.id), [activeGroups]);
+  const isEditing = Boolean(editingExpense?.id);
+
+  useEffect(() => {
+    setQuickLogText("");
+    setQuickLogMessage("");
+    setParsedType(null);
+    setAmount(isEditing ? String(editingExpense.amount ?? "") : "");
+    setCategory(isEditing ? editingExpense.category ?? "" : "");
+    setNotes(isEditing ? editingExpense.notes ?? "" : "");
+    setTransactionDate(isEditing ? expenseDateForForm(editingExpense) : formatLocalDate());
+    setSelectedGroupIds(isEditing && Array.isArray(editingExpense.groupIds) ? editingExpense.groupIds : []);
+    setConfirmation("");
+  }, [editingExpense?.id, isEditing]);
 
   useEffect(() => {
     setGroupsById((current) => {
@@ -180,13 +198,22 @@ export default function AddExpenseScreen({ user, groupIds }) {
     try {
       setSaving(true);
 
-      await saveExpense(user.uid, {
-        amount: parsedAmount,
-        category,
-        notes,
-        groupIds: selectedGroupIds,
-        date: parsedDate
-      });
+      if (isEditing) {
+        await updateExpense(user.uid, editingExpense.id, {
+          amount: parsedAmount,
+          category,
+          notes,
+          date: parsedDate
+        });
+      } else {
+        await saveExpense(user.uid, {
+          amount: parsedAmount,
+          category,
+          notes,
+          groupIds: selectedGroupIds,
+          date: parsedDate
+        });
+      }
 
       // Reset the form after Firestore confirms the write.
       setQuickLogText("");
@@ -197,7 +224,10 @@ export default function AddExpenseScreen({ user, groupIds }) {
       setNotes("");
       setTransactionDate(formatLocalDate());
       setSelectedGroupIds([]);
-      setConfirmation("Expense saved.");
+      setConfirmation(isEditing ? "Expense updated." : "Expense saved.");
+      if (isEditing) {
+        onEditComplete?.();
+      }
       setTimeout(() => setConfirmation(""), 2200);
     } catch (error) {
       console.warn("Unable to save expense.", error);
@@ -218,6 +248,15 @@ export default function AddExpenseScreen({ user, groupIds }) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {isEditing ? (
+            <View style={styles.editingBanner}>
+              <Ionicons name="create-outline" size={20} color="#1D4ED8" />
+              <View style={styles.quickLogHeadingText}>
+                <Text style={styles.editingTitle}>Editing expense</Text>
+                <Text style={styles.editingText}>Update the details below. Existing sharing stays unchanged.</Text>
+              </View>
+            </View>
+          ) : (
           <View style={styles.quickLogCard}>
             <View style={styles.quickLogHeading}>
               <View style={styles.quickLogIcon}>
@@ -276,10 +315,11 @@ export default function AddExpenseScreen({ user, groupIds }) {
               </View>
             ) : null}
           </View>
+          )}
 
           <View style={styles.sectionDivider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>Review or enter manually</Text>
+            <Text style={styles.dividerText}>{isEditing ? "Edit expense details" : "Review or enter manually"}</Text>
             <View style={styles.dividerLine} />
           </View>
 
@@ -333,6 +373,8 @@ export default function AddExpenseScreen({ user, groupIds }) {
             style={styles.input}
           />
 
+          {!isEditing ? (
+          <>
           <Text style={styles.label}>Sharing</Text>
           <View style={styles.sharingSection}>
             <Text style={styles.sharingText}>Every expense is saved to your personal history.</Text>
@@ -371,6 +413,8 @@ export default function AddExpenseScreen({ user, groupIds }) {
               <Text style={styles.sharingMuted}>Join or create a group to share expenses.</Text>
             )}
           </View>
+          </>
+          ) : null}
 
           {confirmation ? <Text style={styles.confirmation}>{confirmation}</Text> : null}
 
@@ -386,7 +430,7 @@ export default function AddExpenseScreen({ user, groupIds }) {
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.submitText}>Submit</Text>
+              <Text style={styles.submitText}>{isEditing ? "Save changes" : "Submit"}</Text>
             )}
           </Pressable>
           </View>
@@ -451,6 +495,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
     padding: 14
+  },
+  editingBanner: {
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    borderColor: "#BFDBFE",
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    padding: 14
+  },
+  editingTitle: {
+    color: "#1E3A8A",
+    fontSize: 17,
+    fontWeight: "800"
+  },
+  editingText: {
+    color: "#1D4ED8",
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2
   },
   quickLogHeading: {
     alignItems: "center",

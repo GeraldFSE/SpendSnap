@@ -2,10 +2,11 @@ import React from "react";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import AddExpenseScreen from "../AddExpenseScreen";
 import { parseExpenseText } from "../../services/openai";
-import { saveExpense } from "../../services/firebase";
+import { saveExpense, updateExpense } from "../../services/firebase";
 
 jest.mock("../../services/firebase", () => ({
   saveExpense: jest.fn(() => Promise.resolve()),
+  updateExpense: jest.fn(() => Promise.resolve()),
   subscribeToGroup: jest.fn(() => jest.fn())
 }));
 
@@ -83,6 +84,46 @@ describe("AddExpenseScreen Quick Log", () => {
     await waitFor(() => {
       expect(screen.getByText(/You can still enter the expense manually/)).toBeTruthy();
       expect(screen.getByPlaceholderText("0.00")).toBeTruthy();
+    });
+  });
+});
+
+describe("AddExpenseScreen editing", () => {
+  it("prefills and updates the existing expense without creating a new document", async () => {
+    const editingExpense = {
+      id: "expense-1",
+      amount: 9.5,
+      category: "Food",
+      notes: "Breakfast",
+      date: { toDate: () => new Date(2026, 6, 20, 12) },
+      groupIds: ["group-1"]
+    };
+    const onEditComplete = jest.fn();
+    const screen = render(
+      <AddExpenseScreen
+        user={user}
+        groupIds={[]}
+        editingExpense={editingExpense}
+        onEditComplete={onEditComplete}
+      />
+    );
+
+    expect(screen.getByPlaceholderText("0.00").props.value).toBe("9.5");
+    expect(screen.getByPlaceholderText("Optional").props.value).toBe("Breakfast");
+    expect(screen.getByPlaceholderText("YYYY-MM-DD").props.value).toBe("2026-07-20");
+
+    fireEvent.changeText(screen.getByPlaceholderText("0.00"), "11.25");
+    fireEvent.press(screen.getByText("Save changes"));
+
+    await waitFor(() => {
+      expect(updateExpense).toHaveBeenCalledWith("user-1", "expense-1", {
+        amount: 11.25,
+        category: "Food",
+        notes: "Breakfast",
+        date: expect.any(Date)
+      });
+      expect(saveExpense).not.toHaveBeenCalled();
+      expect(onEditComplete).toHaveBeenCalled();
     });
   });
 });

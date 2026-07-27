@@ -34,6 +34,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { formatCurrency } from "../utils/currency";
+import { getBudgetAlertDecision } from "../utils/budget";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -155,6 +156,28 @@ export async function deleteExpense(userId, expenseId) {
   return deleteDoc(doc(db, "users", userId, "expenses", expenseId));
 }
 
+export async function updateExpense(userId, expenseId, { amount, category, notes, date }) {
+  requireUserId(userId);
+
+  if (!expenseId) {
+    throw new Error("An expense ID is required.");
+  }
+
+  await updateDoc(doc(getExpensesRef(userId), expenseId), {
+    amount: Number(amount),
+    category,
+    notes: notes?.trim() ?? "",
+    date,
+    updatedAt: serverTimestamp()
+  });
+
+  try {
+    await checkBudgetAndNotify(userId);
+  } catch (error) {
+    console.warn("Unable to check budget alerts after editing.", error);
+  }
+}
+
 function mapExpenses(snapshot) {
   return snapshot.docs.map((document) => ({
     id: document.id,
@@ -182,19 +205,25 @@ export function subscribeToGroupExpenses(groupId, onExpenses, onError) {
   return onSnapshot(groupQuery, (snapshot) => onExpenses(mapExpenses(snapshot)), onError);
 }
 
-export async function saveMonthlyBudget(userId, amount) {
-  return setDoc(
+export async function saveMonthlyBudget(userId, amount, warningThreshold = 0.8, exceededThreshold = 1) {
+  await setDoc(
     getMonthlyBudgetRef(userId),
     {
       amount: Number(amount),
       currency: "SGD",
       period: "monthly",
-      warningThreshold: 0.8,
-      exceededThreshold: 1,
+      warningThreshold: Number(warningThreshold),
+      exceededThreshold: Number(exceededThreshold),
       updatedAt: serverTimestamp()
     },
     { merge: true }
   );
+
+  try {
+    await checkBudgetAndNotify(userId);
+  } catch (error) {
+    console.warn("Unable to refresh budget alerts after saving settings.", error);
+  }
 }
 
 export function subscribeToMonthlyBudget(userId, onBudget, onError) {
@@ -274,22 +303,15 @@ export async function checkBudgetAndNotify(userId) {
   }, 0);
 
   const ratio = monthlyTotal / budgetAmount;
-  const alertMonth = budget.alertMonth === monthKey ? budget.alertMonth : monthKey;
-  const alerted80 = budget.alertMonth === monthKey ? Boolean(budget.alerted80) : false;
-  const alerted100 = budget.alertMonth === monthKey ? Boolean(budget.alerted100) : false;
-  let nextAlerted80 = alerted80;
-  let nextAlerted100 = alerted100;
+  const decision = getBudgetAlertDecision(budget, ratio, monthKey);
   let notification = null;
 
-  if (ratio >= 1 && !alerted100) {
-    nextAlerted80 = true;
-    nextAlerted100 = true;
+  if (decision.notificationLevel === "exceeded") {
     notification = {
       title: "Budget exceeded",
       body: `You've spent ${formatCurrency(monthlyTotal)} of your ${formatCurrency(budgetAmount)} monthly budget.`
     };
-  } else if (ratio >= 0.8 && !alerted80) {
-    nextAlerted80 = true;
+  } else if (decision.notificationLevel === "warning") {
     notification = {
       title: "Budget warning",
       body: `You've used ${Math.round(ratio * 100)}% of your ${formatCurrency(budgetAmount)} monthly budget.`
@@ -299,9 +321,14 @@ export async function checkBudgetAndNotify(userId) {
   await setDoc(
     budgetRef,
     {
-      alertMonth,
-      alerted80: nextAlerted80,
-      alerted100: nextAlerted100,
+      alertMonth: monthKey,
+      alertedWarning: decision.alertedWarning,
+      alertedExceeded: decision.alertedExceeded,
+      alertedWarningThreshold: decision.warningThreshold,
+      alertedExceededThreshold: decision.exceededThreshold,
+      // Retain legacy flags so existing data and diagrams continue to read correctly.
+      alerted80: decision.alertedWarning,
+      alerted100: decision.alertedExceeded,
       lastCheckedAt: serverTimestamp()
     },
     { merge: true }

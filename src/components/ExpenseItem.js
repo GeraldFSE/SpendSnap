@@ -17,7 +17,7 @@ function formatDate(timestamp) {
   }).format(date);
 }
 
-export default function ExpenseItem({ expense, attribution, onDelete, onLongPress }) {
+export default function ExpenseItem({ expense, attribution, onDelete, onEdit, onLongPress }) {
   return (
     <Pressable
       onLongPress={onLongPress}
@@ -35,6 +35,15 @@ export default function ExpenseItem({ expense, attribution, onDelete, onLongPres
 
       <View style={styles.trailing}>
         <Text style={styles.amount}>{formatCurrency(expense.amount)}</Text>
+        {onEdit ? (
+          <Pressable
+            onPress={onEdit}
+            hitSlop={8}
+            style={({ pressed }) => [styles.editButton, pressed ? styles.editButtonPressed : null]}
+          >
+            <Text style={styles.editText}>Edit</Text>
+          </Pressable>
+        ) : null}
         {onDelete ? (
           <Pressable
             onPress={onDelete}
@@ -89,6 +98,20 @@ const styles = StyleSheet.create({
   amount: {
     color: "#0F172A",
     fontSize: 17,
+    fontWeight: "800"
+  },
+  editButton: {
+    backgroundColor: "#DBEAFE",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  editButtonPressed: {
+    backgroundColor: "#BFDBFE"
+  },
+  editText: {
+    color: "#1D4ED8",
+    fontSize: 12,
     fontWeight: "800"
   },
   deleteButton: {

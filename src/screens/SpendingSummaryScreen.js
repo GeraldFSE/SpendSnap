@@ -121,6 +121,8 @@ export default function SpendingSummaryScreen({ user }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [budgetErrorMessage, setBudgetErrorMessage] = useState("");
   const [budgetInput, setBudgetInput] = useState("");
+  const [warningThresholdInput, setWarningThresholdInput] = useState("80");
+  const [exceededThresholdInput, setExceededThresholdInput] = useState("100");
   const [budgetModalVisible, setBudgetModalVisible] = useState(false);
   const [savingBudget, setSavingBudget] = useState(false);
 
@@ -167,20 +169,36 @@ export default function SpendingSummaryScreen({ user }) {
   function openBudgetModal() {
     const currentAmount = Number(budget?.amount);
     setBudgetInput(currentAmount > 0 ? String(currentAmount) : "");
+    setWarningThresholdInput(String(Math.round(Number(budget?.warningThreshold ?? 0.8) * 100)));
+    setExceededThresholdInput(String(Math.round(Number(budget?.exceededThreshold ?? 1) * 100)));
     setBudgetModalVisible(true);
   }
 
   async function handleSaveBudget() {
     const parsedAmount = Number(budgetInput);
+    const warningPercent = Number(warningThresholdInput);
+    const exceededPercent = Number(exceededThresholdInput);
 
     if (!budgetInput.trim() || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("Invalid budget", "Enter a monthly budget greater than 0.");
       return;
     }
 
+    if (
+      !warningThresholdInput.trim() ||
+      !exceededThresholdInput.trim() ||
+      !Number.isFinite(warningPercent) ||
+      !Number.isFinite(exceededPercent) ||
+      warningPercent <= 0 ||
+      exceededPercent <= warningPercent
+    ) {
+      Alert.alert("Invalid alert thresholds", "Enter percentages above 0, with the exceeded alert higher than the warning.");
+      return;
+    }
+
     try {
       setSavingBudget(true);
-      await saveMonthlyBudget(user.uid, parsedAmount);
+      await saveMonthlyBudget(user.uid, parsedAmount, warningPercent / 100, exceededPercent / 100);
       setBudgetModalVisible(false);
     } catch (error) {
       console.warn("Unable to save monthly budget.", error);
@@ -286,6 +304,22 @@ export default function SpendingSummaryScreen({ user }) {
                 value={budgetInput}
                 onChangeText={setBudgetInput}
                 placeholder="0.00"
+                keyboardType="decimal-pad"
+                style={styles.modalInput}
+              />
+              <Text style={styles.modalLabel}>Warning alert (%)</Text>
+              <TextInput
+                value={warningThresholdInput}
+                onChangeText={setWarningThresholdInput}
+                placeholder="80"
+                keyboardType="decimal-pad"
+                style={styles.modalInput}
+              />
+              <Text style={styles.modalLabel}>Exceeded alert (%)</Text>
+              <TextInput
+                value={exceededThresholdInput}
+                onChangeText={setExceededThresholdInput}
+                placeholder="100"
                 keyboardType="decimal-pad"
                 style={styles.modalInput}
               />

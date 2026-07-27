@@ -1,14 +1,14 @@
 # SpendSnap
 
-> A low-friction, real-time personal **and** shared budget tracker built with React Native (Expo) and Firebase.
+> Log spending quickly, review it confidently, and see personal or shared budgets update in real time.
 
-SpendSnap helps people log expenses in a few taps, understand where their money goes through charts and summaries, stay inside a monthly budget with proactive alerts, and split visibility of spending across shared groups (flatmates, family, trips) — all syncing live across devices.
+SpendSnap helps people record purchases before they forget, correct past entries, understand spending patterns, and receive warnings at budget percentages they choose. Expenses can remain personal or be shared with selected groups such as households and trips.
 
 ![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-0F172A)
 ![Expo SDK](https://img.shields.io/badge/Expo%20SDK-54-000020)
 ![React Native](https://img.shields.io/badge/React%20Native-0.81-61DAFB)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth%20%2B%20Firestore-FFCA28)
-![Tests](https://img.shields.io/badge/tests-110%20passing-16A34A)
+![Tests](https://img.shields.io/badge/tests-122%20passing-16A34A)
 ![License](https://img.shields.io/badge/license-not%20set-lightgrey)
 
 ---
@@ -48,17 +48,17 @@ SpendSnap helps people log expenses in a few taps, understand where their money 
 
 ## 1. Overview
 
-SpendSnap is an **Expo-managed React Native application** that runs on iOS and Android. It is designed around a single guiding principle: **a budget tracker only works if logging is effortless.** Most people abandon budgeting apps not because the analytics are weak, but because the act of recording each purchase is tedious.
+SpendSnap runs on iOS and Android and follows one principle: **a budget tracker only works when logging and correcting expenses are effortless.**
 
 SpendSnap reduces that friction in several ways:
 
-- A minimal expense form (amount + category, with optional notes).
-- A Home Screen **Quick Action** (long-press the app icon) that jumps straight to the Add Expense screen.
-- Live, automatic syncing — there is no "save and refresh"; data streams in via Firestore listeners.
-- A monthly budget with **automatic local notifications** at 80% and 100% so the user is warned *before* overspending, not after.
-- **Shared groups** so a household or trip can pool visibility of spending without giving up their individual personal views.
+- Type an expense manually or describe it naturally and review the suggested fields before saving.
+- Edit or delete an incorrect history entry without changing its identity.
+- See totals, charts, recent activity, and shared-group spending update without manually refreshing.
+- Choose a monthly limit and the warning/exceeded percentages that suit the user.
+- Keep an expense personal or include it in one or more shared groups.
 
-The application is intentionally structured to demonstrate sound software-engineering practice: a clear **client–server architecture** with Firebase providing backend services, a **component-based** and **layered** front end that maximises reuse and testability, pure business logic extracted into independently unit-tested modules, and a comprehensive automated test suite that includes **emulator-backed system tests of the security rules**.
+Implementation details are kept in [Software Architecture](#6-software-architecture), so this overview stays focused on user outcomes.
 
 ---
 
@@ -74,9 +74,10 @@ SpendSnap targets each of these:
 
 | Problem | SpendSnap's response |
 | --- | --- |
-| Logging is tedious | Two-field form, app-icon Quick Action, instant sync |
-| Feedback is late | Monthly budget with 80% / 100% push alerts triggered on each save |
-| Shared spend is awkward | Per-user "personal" views **plus** opt-in groups that aggregate members' spend, with privacy-preserving rules |
+| Logging is tedious | Type a short description or use the compact form, then review before saving |
+| Mistakes are hard to correct | Edit an existing history entry in the same familiar form |
+| Feedback is late | Choose warning and exceeded percentages and receive one alert per crossed threshold each month |
+| Shared spend is awkward | Keep a personal view while selectively including expenses in shared groups |
 
 ### User stories
 
@@ -97,22 +98,21 @@ Those stories map onto the following use cases:
 
 ### Implemented
 
-- **Authentication** — email/password sign-up and sign-in, plus anonymous ("guest") sign-in, backed by Firebase Auth with persistence across app restarts (AsyncStorage).
-- **Manual expense logging** — amount, category (Food, Transport, Shopping, Bills, Others), optional notes, and an optional group destination.
-- **AI Quick Log** — describe a transaction naturally (for example, `Lunch at McDonald's $12.80`) and an authenticated Firebase Cloud Function uses OpenAI structured output to prefill the existing form for review. It never auto-saves.
-- **Home dashboard** — month-to-date total, today's spend, transaction count, an at-a-glance budget progress bar, quick navigation actions, and the three most recent expenses.
-- **Set / edit monthly budget from anywhere** — a modal on both the Home and Summary tabs; the budget syncs live across the app.
-- **Budget alerts** — local notifications fire automatically the first time you cross 80% and 100% of your monthly budget within a calendar month (de-duplicated per month).
-- **Spending summaries** — daily (7-day), weekly (6-week), and monthly (6-month) bar charts with totals, current-period figure, average, and peak.
-- **Expense history** — full chronological list with **Today / This Week / This Month / All Time** filters, a category breakdown bar chart, and swipe-free **long-press-to-delete**.
-- **Shared groups (multi-group)** — create or join any number of groups via an invite code; each group is a collapsible card containing nested dropdowns for the invite code, members (shown by **email**), and an **interactive pie chart of spending per member**. Tapping a member's slice drills into that member's category breakdown. Each group shows its running total. Owners can rename or archive their groups.
-- **Singapore Dollar (SGD)** currency formatting throughout, centralised in one utility.
-- **Home Screen Quick Actions** — long-press the app icon to log an expense (requires a development/EAS build; gracefully degrades in Expo Go).
-- **Tab navigation** with Ionicons (filled when active, outline when inactive).
+- **Accounts** — sign up with email, sign in again later, or enter as a guest for a quick trial.
+- **Manual expense logging** — enter amount, category, notes, date, and optional shared destinations, then review before saving.
+- **AI Quick Log** — type a sentence such as `Lunch at McDonald's $12.80`; SpendSnap fills the same editable form and never saves automatically.
+- **Editable history** — filter expenses by period, inspect category totals, edit an entry in the existing form, or delete it with an explicit action or long press.
+- **Home dashboard** — see this month's total, today's spend, transaction count, budget progress, and recent expenses at a glance.
+- **Personal budget controls** — set the monthly limit plus separate warning and exceeded percentages from Home or Summary. Saving recalculates immediately.
+- **Non-repeating alerts** — receive at most one warning and one exceeded alert for the configured thresholds in each calendar month.
+- **Spending summaries** — compare daily, weekly, and monthly totals, averages, and peaks.
+- **Shared groups** — create or join multiple groups, choose which expenses appear in each, and explore member/category breakdowns while retaining a personal history.
+- **Quick app entry** — in a native build, long-press the SpendSnap icon to jump directly to expense entry; Expo Go users use the Add Expense tab.
 
 ### Planned / placeholder
 
 - **Automatic SMS capture** — intentionally deferred because background message access is platform-sensitive. Quick Log provides the cross-platform, Expo Go-compatible AI entry path.
+- **Multi-expense Quick Log** — deferred because independently reviewing, editing, discarding, and saving several drafts needs a dedicated multi-card review experience.
 
 ---
 
@@ -127,6 +127,26 @@ The flow worth showing first: describe a purchase in one line, and the `parseExp
 | ![AI Quick Log with the description "i ate $4 of chicken rice at upper thomson" typed in](docs/screenshots/quick-log-input.png) | ![The Add Expense form pre-filled with amount 4, category Food, the merchant in the notes field, and today's date](docs/screenshots/quick-log-filled.png) |
 
 <sub>"i ate $4 of chicken rice at upper thomson" becomes amount **4**, category **Food**, merchant **upper thomson** in the notes, and the transaction date — every field still editable before you submit.</sub>
+
+### Edit an expense
+
+Open History, tap **Edit** on the entry that needs correcting, then review the pre-filled form and save the changes. SpendSnap updates the existing entry instead of creating a duplicate.
+
+| Choose an expense from History | Update the existing expense |
+| --- | --- |
+| ![History screen showing Edit and Delete actions beside each expense](docs/screenshots/edit-expense-history.jpg) | ![Editing Expense screen pre-filled with amount, category, notes and transaction date](docs/screenshots/edit-expense-form.jpg) |
+
+<sub>The expense keeps its original identity and sharing destinations; only the reviewed details are updated.</sub>
+
+### Adjust budget alerts
+
+The Summary screen shows current progress against the monthly budget. Tap **Edit** to change the budget amount and choose separate warning and exceeded percentages; saving recalculates the status immediately.
+
+| Review current budget progress | Choose alert percentages |
+| --- | --- |
+| ![Summary screen showing monthly budget progress and spending trend](docs/screenshots/budget-alert-summary.jpg) | ![Monthly budget settings with editable warning and exceeded alert percentages](docs/screenshots/budget-alert-settings.jpg) |
+
+<sub>Each configured threshold can notify at most once per calendar month, preventing repeated alerts for the same crossing.</sub>
 
 ### Core screens
 
@@ -412,17 +432,20 @@ users/{userId}
   │     date:      timestamp       // serverTimestamp() at creation
   │     userId:    string          // == {userId}, used by collection-group reads
   │     groupIds:  string[]        // selected groups this expense appears in ([] when personal-only)
+  │     updatedAt: timestamp        // added when an existing expense is edited
   │
   └── settings/{settingId}
         monthlyBudget:
           amount:            number
           currency:          "SGD"
           period:            "monthly"
-          warningThreshold:  number   // default 0.8
-          exceededThreshold: number   // default 1
+          warningThreshold:  number   // user-selected ratio; default 0.8
+          exceededThreshold: number   // user-selected ratio; default 1
           alertMonth:        string   // "YYYY-M" — month the alert flags apply to
-          alerted80:         boolean  // dedupe flag for the 80% notification
-          alerted100:        boolean  // dedupe flag for the 100% notification
+          alertedWarning:    boolean  // dedupe flag for the configured warning
+          alertedExceeded:   boolean  // dedupe flag for the configured exceeded alert
+          alertedWarningThreshold:  number
+          alertedExceededThreshold: number
           updatedAt:         timestamp
         groups:
           ids:               string[] // group ids the user currently belongs to
@@ -464,6 +487,7 @@ SpendSnap has no REST API; instead, **`src/services/firebase.js` is the applicat
 | Function | Description |
 | --- | --- |
 | `saveExpense(userId, { amount, category, notes, groupIds, date })` | Adds an expense to the user's subcollection with the reviewed transaction date and supplied `groupIds`. Then runs `checkBudgetAndNotify`. |
+| `updateExpense(userId, expenseId, { amount, category, notes, date })` | Updates the existing document in place, preserves its identity and sharing, adds `updatedAt`, then recalculates the budget. |
 | `deleteExpense(userId, expenseId)` | Deletes one of the user's expenses. |
 | `subscribeToPersonalExpenses(userId, onExpenses, onError)` | Live stream of the user's **own** expenses, newest first. Powers Home, Summary, History. |
 | `subscribeToGroupExpenses(groupId, onExpenses, onError)` | Collection-group live stream of **all** expenses tagged with `groupId`. Powers the group pie charts. |
@@ -478,9 +502,9 @@ SpendSnap has no REST API; instead, **`src/services/firebase.js` is the applicat
 
 | Function | Description |
 | --- | --- |
-| `saveMonthlyBudget(userId, amount)` | Upserts the monthly budget document (currency `SGD`, thresholds 0.8 / 1.0). |
+| `saveMonthlyBudget(userId, amount, warningThreshold, exceededThreshold)` | Saves the limit and user-selected thresholds, then immediately recalculates alerts against the new settings. |
 | `subscribeToMonthlyBudget(userId, onBudget, onError)` | Live stream of the budget document (or `null`). |
-| `checkBudgetAndNotify(userId)` | Computes month-to-date spend and fires a local notification the first time the user crosses 80% / 100% in a given month (de-duplicated via flags on the budget doc). |
+| `checkBudgetAndNotify(userId)` | Computes month-to-date spend and fires at most once for each configured threshold in a calendar month. |
 
 ### Groups
 
@@ -634,13 +658,13 @@ If Expo hangs on start, confirm your Node version is an LTS release (20 or 22).
 
 ## 14. Testing
 
-SpendSnap ships with **110 automated tests** across four categories, reflecting a deliberate testing pyramid: many fast unit tests, component tests, mocked Cloud Function parser tests, and focused Firestore system tests.
+SpendSnap ships with **122 automated tests** across four categories, reflecting a deliberate testing pyramid: many fast unit tests, component tests, mocked Cloud Function parser tests, and focused Firestore system tests.
 
 | Suite | Runner | What it covers | Count |
 | --- | --- | --- | --- |
-| **Unit** | Jest (node) | Pure logic in `utils/`: currency, dates, expenses, budget, pie geometry, Quick Log normalization | 62 |
-| **Component** | Jest + RNTL | `ExpenseItem`, `PieChart`, `HomeScreen`, `AddExpenseScreen` (services mocked) | 18 |
-| **Function** | `node:test` | OpenAI structured-result normalization using mocked Responses API output | 5 |
+| **Unit** | Jest (node) | Pure logic in `utils/`: currency, dates, expenses, budget, pie geometry, Quick Log normalization | 65 |
+| **Component** | Jest + RNTL | `ExpenseItem`, `PieChart`, `HomeScreen`, `AddExpenseScreen` (services mocked) | 21 |
+| **Function** | `node:test` | OpenAI structured-result normalization using mocked Responses API output | 11 |
 | **System** | `node:test` + Firestore Emulator | Security rules and data-model behaviour end-to-end | 25 |
 
 ### Commands

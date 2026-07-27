@@ -65,7 +65,18 @@ describe("HomeScreen", () => {
     fireEvent.changeText(getByPlaceholderText("0.00"), "200");
     fireEvent.press(getByText("Save"));
 
-    await waitFor(() => expect(saveMonthlyBudget).toHaveBeenCalledWith("u1", 200));
+    await waitFor(() => expect(saveMonthlyBudget).toHaveBeenCalledWith("u1", 200, 0.8, 1));
+  });
+
+  it("saves user-adjusted warning and exceeded thresholds", async () => {
+    const { getByText, getByPlaceholderText } = render(<HomeScreen user={user} onSignOut={jest.fn()} />);
+    fireEvent.press(getByText("Set budget"));
+    fireEvent.changeText(getByPlaceholderText("0.00"), "200");
+    fireEvent.changeText(getByPlaceholderText("80"), "70");
+    fireEvent.changeText(getByPlaceholderText("100"), "95");
+    fireEvent.press(getByText("Save"));
+
+    await waitFor(() => expect(saveMonthlyBudget).toHaveBeenCalledWith("u1", 200, 0.7, 0.95));
   });
 
   it("shows budget progress and an Edit button once a budget exists", () => {

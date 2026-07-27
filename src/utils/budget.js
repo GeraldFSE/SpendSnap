@@ -7,6 +7,40 @@ export const BUDGET_COLORS = {
   exceeded: "#DC2626"
 };
 
+export function getBudgetAlertDecision(budget, ratio, monthKey) {
+  const warningThreshold = Number(budget?.warningThreshold ?? 0.8);
+  const exceededThreshold = Number(budget?.exceededThreshold ?? 1);
+  const sameMonth = budget?.alertMonth === monthKey;
+  const warningMatches =
+    Number(budget?.alertedWarningThreshold ?? 0.8) === warningThreshold;
+  const exceededMatches =
+    Number(budget?.alertedExceededThreshold ?? 1) === exceededThreshold;
+  const alreadyWarned =
+    sameMonth && warningMatches && Boolean(budget?.alertedWarning ?? budget?.alerted80);
+  const alreadyExceeded =
+    sameMonth && exceededMatches && Boolean(budget?.alertedExceeded ?? budget?.alerted100);
+  let alertedWarning = alreadyWarned;
+  let alertedExceeded = alreadyExceeded;
+  let notificationLevel = null;
+
+  if (ratio >= exceededThreshold && !alreadyExceeded) {
+    alertedWarning = true;
+    alertedExceeded = true;
+    notificationLevel = "exceeded";
+  } else if (ratio >= warningThreshold && !alreadyWarned) {
+    alertedWarning = true;
+    notificationLevel = "warning";
+  }
+
+  return {
+    warningThreshold,
+    exceededThreshold,
+    alertedWarning,
+    alertedExceeded,
+    notificationLevel
+  };
+}
+
 // Derives the budget status (label, color, detail copy, progress) from a budget doc
 // and the amount spent this month.
 export function getBudgetState(budget, monthlySpent) {

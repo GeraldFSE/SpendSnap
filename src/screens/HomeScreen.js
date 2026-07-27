@@ -28,6 +28,8 @@ export default function HomeScreen({ onSignOut, user }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [budgetModalVisible, setBudgetModalVisible] = useState(false);
   const [budgetInput, setBudgetInput] = useState("");
+  const [warningThresholdInput, setWarningThresholdInput] = useState("80");
+  const [exceededThresholdInput, setExceededThresholdInput] = useState("100");
   const [savingBudget, setSavingBudget] = useState(false);
 
   useEffect(() => {
@@ -69,7 +71,10 @@ export default function HomeScreen({ onSignOut, user }) {
     const budgetAmount = Number(budget?.amount) || 0;
     const budgetRatio = budgetAmount > 0 ? monthTotal / budgetAmount : 0;
     const budgetProgress = Math.min(budgetRatio, 1);
-    const budgetColor = budgetRatio >= 1 ? "#DC2626" : budgetRatio >= 0.8 ? "#D97706" : "#16A34A";
+    const warningThreshold = Number(budget?.warningThreshold ?? 0.8);
+    const exceededThreshold = Number(budget?.exceededThreshold ?? 1);
+    const budgetColor =
+      budgetRatio >= exceededThreshold ? "#DC2626" : budgetRatio >= warningThreshold ? "#D97706" : "#16A34A";
     const recentExpenses = expenses.slice(0, 3);
 
     return {
@@ -77,6 +82,8 @@ export default function HomeScreen({ onSignOut, user }) {
       budgetColor,
       budgetProgress,
       budgetRatio,
+      warningThreshold,
+      exceededThreshold,
       monthTotal,
       recentExpenses,
       todayTotal
@@ -86,20 +93,36 @@ export default function HomeScreen({ onSignOut, user }) {
   function openBudgetModal() {
     const currentAmount = Number(budget?.amount);
     setBudgetInput(currentAmount > 0 ? String(currentAmount) : "");
+    setWarningThresholdInput(String(Math.round(Number(budget?.warningThreshold ?? 0.8) * 100)));
+    setExceededThresholdInput(String(Math.round(Number(budget?.exceededThreshold ?? 1) * 100)));
     setBudgetModalVisible(true);
   }
 
   async function handleSaveBudget() {
     const parsedAmount = Number(budgetInput);
+    const warningPercent = Number(warningThresholdInput);
+    const exceededPercent = Number(exceededThresholdInput);
 
     if (!budgetInput.trim() || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("Invalid budget", "Enter a monthly budget greater than 0.");
       return;
     }
 
+    if (
+      !warningThresholdInput.trim() ||
+      !exceededThresholdInput.trim() ||
+      !Number.isFinite(warningPercent) ||
+      !Number.isFinite(exceededPercent) ||
+      warningPercent <= 0 ||
+      exceededPercent <= warningPercent
+    ) {
+      Alert.alert("Invalid alert thresholds", "Enter percentages above 0, with the exceeded alert higher than the warning.");
+      return;
+    }
+
     try {
       setSavingBudget(true);
-      await saveMonthlyBudget(user.uid, parsedAmount);
+      await saveMonthlyBudget(user.uid, parsedAmount, warningPercent / 100, exceededPercent / 100);
       setBudgetModalVisible(false);
     } catch (error) {
       console.warn("Unable to save monthly budget.", error);
@@ -159,7 +182,11 @@ export default function HomeScreen({ onSignOut, user }) {
               {dashboard.budgetAmount > 0 ? (
                 <View style={styles.budgetStatusRow}>
                   <Text style={[styles.budgetStatus, { color: dashboard.budgetColor }]}>
-                    {dashboard.budgetRatio >= 1 ? "Exceeded" : dashboard.budgetRatio >= 0.8 ? "Near limit" : "On track"}
+                    {dashboard.budgetRatio >= dashboard.exceededThreshold
+                      ? "Exceeded"
+                      : dashboard.budgetRatio >= dashboard.warningThreshold
+                        ? "Near limit"
+                        : "On track"}
                   </Text>
                   <Pressable
                     onPress={openBudgetModal}
@@ -189,7 +216,10 @@ export default function HomeScreen({ onSignOut, user }) {
               />
             </View>
             {dashboard.budgetAmount > 0 ? (
-              <Text style={styles.budgetHint}>Alerts fire once per month at 80% and 100%.</Text>
+              <Text style={styles.budgetHint}>
+                Alerts fire once per month at {Math.round(dashboard.warningThreshold * 100)}% and{" "}
+                {Math.round(dashboard.exceededThreshold * 100)}%.
+              </Text>
             ) : null}
           </View>
 
@@ -257,6 +287,22 @@ export default function HomeScreen({ onSignOut, user }) {
               value={budgetInput}
               onChangeText={setBudgetInput}
               placeholder="0.00"
+              keyboardType="decimal-pad"
+              style={styles.modalInput}
+            />
+            <Text style={styles.modalLabel}>Warning alert (%)</Text>
+            <TextInput
+              value={warningThresholdInput}
+              onChangeText={setWarningThresholdInput}
+              placeholder="80"
+              keyboardType="decimal-pad"
+              style={styles.modalInput}
+            />
+            <Text style={styles.modalLabel}>Exceeded alert (%)</Text>
+            <TextInput
+              value={exceededThresholdInput}
+              onChangeText={setExceededThresholdInput}
+              placeholder="100"
               keyboardType="decimal-pad"
               style={styles.modalInput}
             />

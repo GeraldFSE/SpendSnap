@@ -38,6 +38,13 @@ describe("ExpenseItem", () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
+  it("shows an Edit control and fires it", () => {
+    const onEdit = jest.fn();
+    const { getByText } = render(<ExpenseItem expense={expense} onEdit={onEdit} />);
+    fireEvent.press(getByText("Edit"));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
   it("falls back to a friendly date when the timestamp is missing", () => {
     const { getByText } = render(<ExpenseItem expense={{ ...expense, date: null }} />);
     expect(getByText(/Just now/)).toBeTruthy();
