@@ -104,3 +104,64 @@ test("returns safe blanks for non-transaction gibberish", async () => {
     message: "I couldn't identify a transaction. Continue with manual entry."
   });
 });
+
+test("rejects a zero amount as unusable", async () => {
+  const result = await parse("coffee $0", {
+    merchant: "Coffee shop",
+    amount: 0,
+    category: "Food",
+    type: "expense",
+    date: TODAY
+  });
+
+  assert.equal(result.amount, null);
+  assert.equal(result.complete, false);
+});
+
+test("treats a negative refund as positive-value income", async () => {
+  const result = await parse("refund -5.50", {
+    merchant: null,
+    amount: 5.5,
+    category: "Others",
+    type: "income",
+    date: TODAY
+  });
+
+  assert.equal(result.amount, 5.5);
+  assert.equal(result.type, "income");
+});
+
+test("rejects empty and whitespace-only input before calling OpenAI", async () => {
+  await assert.rejects(() => parse("   ", {}), /Enter an expense description/);
+});
+
+test("rejects input longer than 500 characters before calling OpenAI", async () => {
+  await assert.rejects(() => parse("x".repeat(501), {}), /under 500 characters/);
+});
+
+test("accepts special characters and emoji when the transaction is clear", async () => {
+  const result = await parse("🍜 lunch @ 小贩中心 — $6.80!", {
+    merchant: "小贩中心",
+    amount: 6.8,
+    category: "Food",
+    type: "expense",
+    date: TODAY
+  });
+
+  assert.equal(result.merchant, "小贩中心");
+  assert.equal(result.amount, 6.8);
+});
+
+test("leaves amount blank when multiple currencies are ambiguous", async () => {
+  const result = await parse("Paid either SGD 20 or USD 20 online", {
+    merchant: null,
+    amount: null,
+    category: "Shopping",
+    type: "expense",
+    date: TODAY
+  });
+
+  assert.equal(result.amount, null);
+  assert.equal(result.complete, false);
+  assert.match(result.message, /unclear/i);
+});

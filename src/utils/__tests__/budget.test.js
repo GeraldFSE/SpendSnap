@@ -1,4 +1,4 @@
-import { getBudgetState, BUDGET_COLORS } from "../budget";
+import { getBudgetAlertDecision, getBudgetState, BUDGET_COLORS } from "../budget";
 
 describe("getBudgetState", () => {
   it("reports no budget when amount is missing or zero", () => {
@@ -46,5 +46,43 @@ describe("getBudgetState", () => {
     expect(getBudgetState(budget, 60).status).toBe("Nearing monthly budget");
     expect(getBudgetState(budget, 95).status).toBe("Budget exceeded");
     expect(getBudgetState(budget, 40).status).toBe("On track");
+  });
+});
+
+describe("getBudgetAlertDecision", () => {
+  it("does not repeat the same warning in the same calendar month", () => {
+    const budget = {
+      warningThreshold: 0.7,
+      exceededThreshold: 1,
+      alertMonth: "2026-7",
+      alertedWarning: true,
+      alertedWarningThreshold: 0.7
+    };
+
+    expect(getBudgetAlertDecision(budget, 0.8, "2026-7").notificationLevel).toBeNull();
+  });
+
+  it("can still fire the exceeded alert after the warning fired", () => {
+    const budget = {
+      warningThreshold: 0.8,
+      exceededThreshold: 1,
+      alertMonth: "2026-7",
+      alertedWarning: true,
+      alertedWarningThreshold: 0.8
+    };
+
+    expect(getBudgetAlertDecision(budget, 1.1, "2026-7").notificationLevel).toBe("exceeded");
+  });
+
+  it("resets de-duplication in a new month or when a threshold changes", () => {
+    const budget = {
+      warningThreshold: 0.6,
+      exceededThreshold: 1,
+      alertMonth: "2026-6",
+      alertedWarning: true,
+      alertedWarningThreshold: 0.8
+    };
+
+    expect(getBudgetAlertDecision(budget, 0.7, "2026-7").notificationLevel).toBe("warning");
   });
 });

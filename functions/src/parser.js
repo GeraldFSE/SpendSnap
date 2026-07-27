@@ -95,6 +95,8 @@ async function parseExpenseTextWithOpenAI({ client, text, today, safetyIdentifie
       "Use only these categories: Food, Transport, Shopping, Bills, Others.",
       "Use null for any merchant, amount, category, or type that is missing or genuinely ambiguous.",
       "Type must be expense for money spent or income for money received.",
+      "Treat refunds and negative amounts as income; return the absolute positive amount and type income.",
+      "If more than one currency is mentioned and the intended charge is unclear, return null for amount.",
       "Do not invent a merchant or amount."
     ].join(" "),
     input: description,

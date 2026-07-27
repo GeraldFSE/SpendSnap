@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import ExpenseItem from "../components/ExpenseItem";
 import { deleteExpense, subscribeToPersonalExpenses } from "../services/firebase";
 import { formatCurrency } from "../utils/currency";
@@ -49,6 +50,7 @@ function filterExpenses(expenses, filter) {
 }
 
 export default function HistoryScreen({ user }) {
+  const navigation = useNavigation();
   const [expenses, setExpenses] = useState([]);
   const [selectedFilter, setSelectedFilter] = useState("month");
   const [loading, setLoading] = useState(true);
@@ -119,6 +121,7 @@ export default function HistoryScreen({ user }) {
       renderItem={({ item }) => (
         <ExpenseItem
           expense={item}
+          onEdit={() => navigation.navigate("Add Expense", { expense: item })}
           onDelete={() => confirmDeleteExpense(item)}
           onLongPress={() => confirmDeleteExpense(item)}
         />
