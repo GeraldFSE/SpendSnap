@@ -19,6 +19,7 @@ SpendSnap helps people record purchases before they forget, correct past entries
 2. [Problem Motivation](#2-problem-motivation)
 3. [Features](#3-features)
 4. [Screenshots / Demo](#4-screenshots--demo)
+   - [User Feedback and Iteration](#user-feedback-and-iteration)
 5. [Tech Stack](#5-tech-stack)
 6. [Software Architecture](#6-software-architecture)
    - 6.1 [High-level: Client–Server with a BaaS backend](#61-high-level-clientserver-with-a-baas-backend)
@@ -181,6 +182,19 @@ Run the app (see [Running Locally](#13-usage--running-locally)), then:
 A short GIF of the Quick Log round trip (typing → parsed form) is the single most convincing artefact for a demo or poster; `xcrun simctl io booted recordVideo` captures the video, and any converter turns it into a GIF.
 
 There is no hosted web demo. SpendSnap is a native mobile app; the fastest way to try it is via **Expo Go** with a QR code (see below).
+
+---
+
+## User Feedback and Iteration
+
+| Feedback | Change Made |
+| --- | --- |
+| Users found it difficult to correct mistakes, since there was no way to fix an incorrect expense without deleting and re-entering it. | Added an Edit action to Expense History, reusing the existing expense form to update the record in place. |
+| Budget alert thresholds (80%/100%) were fixed and not adjustable to individual preference. | Budget settings now let users configure their own warning and exceeded percentages. |
+| Changing the budget limit didn't update alert calculations right away. | Saving a new budget now immediately recalculates alert status against the updated limit. |
+| The core expense-logging experience still relied on manual typing, with no automatic or lower-effort way to log spending. | Added AI Quick Log — users type a plain-English description (e.g. "lunch at McDonald's $12.80") and the app extracts and prefills amount, category, merchant, and date for review. |
+| The README repeated implementation details under each feature rather than clearly explaining what users actually experience. | Rewrote feature descriptions to focus on user-facing behavior and outcomes, moving technical/stack details to a separate section. |
+| The project poster was too text-heavy and dense. | Revised the poster layout to reduce text and improve visual clarity. |
 
 ---
 
